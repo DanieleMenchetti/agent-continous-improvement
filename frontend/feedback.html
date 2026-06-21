@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Expert Review</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>🧠 Expert Review</h1>
+    <nav>
+      <a href="chat.html">Chat</a>
+      <a href="feedback.html">Expert review</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <div class="toolbar">
+      <label><input type="checkbox" id="onlyUnreviewed" /> Show only unreviewed</label>
+      <button class="secondary" id="refresh">Refresh</button>
+    </div>
+    <div id="list"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API = "/api";
+    const listEl = document.getElementById("list");
+    const onlyUnreviewed = document.getElementById("onlyUnreviewed");
+    const toastEl = document.getElementById("toast");
+
+    function toast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add("show");
+      setTimeout(() => toastEl.classList.remove("show"), 1800);
+    }
+
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = s == null ? "" : s;
+      return d.innerHTML;
+    }
+
+    async function load() {
+      listEl.innerHTML = "<div class='empty'>Loading…</div>";
+      const url = API + "/qa?only_unreviewed=" + (onlyUnreviewed.checked ? "true" : "false");
+      const res = await fetch(url);
+      const pairs = await res.json();
+      if (!pairs.length) {
+        listEl.innerHTML = "<div class='empty'>No Q&A pairs yet.</div>";
+        return;
+      }
+      listEl.innerHTML = "";
+      for (const p of pairs) listEl.appendChild(renderCard(p));
+    }
+
+    function renderCard(p) {
+      const fb = p.feedback;
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="meta">#${p.id} · ${new Date(p.created_at).toLocaleString()}
+          ${fb ? "<span class='badge has'>feedback</span>" : "<span class='badge none'>no feedback</span>"}
+        </div>
+        <div class="label">Customer question</div>
+        <div class="q">${esc(p.question)}</div>
+        <div class="label">Agent answer</div>
+        <div class="a">${esc(p.answer)}</div>
+        <div class="fb-area">
+          <div class="label">Expert feedback / corrected guidance</div>
+          <textarea placeholder="Provide the correct guidance the agent should follow next time…">${esc(fb ? fb.content : "")}</textarea>
+          <div class="row">
+            <label>Rating of answer:
+              <select class="rating">
+                <option value="">–</option>
+                ${[1,2,3,4,5].map(n => `<option value="${n}" ${fb && fb.rating===n?"selected":""}>${n}</option>`).join("")}
+              </select>
+            </label>
+            <label><input type="checkbox" class="iscorr" ${!fb || fb.is_correction ? "checked" : ""}/> This corrects the answer</label>
+            <button class="save">${fb ? "Update feedback" : "Save feedback"}</button>
+            ${fb ? `<button class="danger del">Delete</button>` : ""}
+          </div>
+        </div>`;
+
+      const ta = card.querySelector("textarea");
+      const ratingSel = card.querySelector(".rating");
+      const isCorr = card.querySelector(".iscorr");
+
+      card.querySelector(".save").addEventListener("click", async () => {
+        const content = ta.value.trim();
+        if (!content) { toast("Feedback cannot be empty"); return; }
+        const body = {
+          content,
+          rating: ratingSel.value ? Number(ratingSel.value) : null,
+          is_correction: isCorr.checked,
+        };
+        const res = await fetch(API + "/feedback/" + p.id, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) { toast("Feedback saved & indexed for RAG"); load(); }
+        else toast("Error saving feedback");
+      });
+
+      const delBtn = card.querySelector(".del");
+      if (delBtn) {
+        delBtn.addEventListener("click", async () => {
+          const res = await fetch(API + "/feedback/" + p.id, { method: "DELETE" });
+          if (res.ok) { toast("Feedback removed"); load(); }
+          else toast("Error deleting feedback");
+        });
+      }
+      return card;
+    }
+
+    document.getElementById("refresh").addEventListener("click", load);
+    onlyUnreviewed.addEventListener("change", load);
+    load();
+  </script>
+</body>
+</html>

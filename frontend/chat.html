@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Customer Chat</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>💬 Domain Assistant</h1>
+    <nav>
+      <a href="chat.html">Chat</a>
+      <a href="feedback.html">Expert review</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <div id="messages"></div>
+    <div class="composer">
+      <textarea id="input" placeholder="Ask a question…" rows="2"></textarea>
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const API = "/api";
+    const sessionId = "sess-" + Math.random().toString(36).slice(2, 10);
+    const messagesEl = document.getElementById("messages");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+
+    function addMessage(text, who, usedFeedback) {
+      const div = document.createElement("div");
+      div.className = "msg " + who;
+      div.textContent = text;
+      if (usedFeedback && usedFeedback.length) {
+        const u = document.createElement("div");
+        u.className = "used";
+        u.textContent = "ℹ️ Answer informed by " + usedFeedback.length +
+          " expert feedback item(s).";
+        div.appendChild(u);
+      }
+      messagesEl.appendChild(div);
+      div.scrollIntoView({ behavior: "smooth", block: "end" });
+      return div;
+    }
+
+    async function send() {
+      const question = inputEl.value.trim();
+      if (!question) return;
+      addMessage(question, "user");
+      inputEl.value = "";
+      sendBtn.disabled = true;
+      const pending = addMessage("…", "bot");
+      try {
+        const res = await fetch(API + "/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question, session_id: sessionId }),
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        pending.textContent = data.answer;
+        if (data.used_feedback && data.used_feedback.length) {
+          const u = document.createElement("div");
+          u.className = "used";
+          u.textContent = "ℹ️ Answer informed by " +
+            data.used_feedback.filter(Boolean).length + " expert feedback item(s).";
+          pending.appendChild(u);
+        }
+      } catch (e) {
+        pending.textContent = "⚠️ Error: " + e.message;
+      } finally {
+        sendBtn.disabled = false;
+        inputEl.focus();
+      }
+    }
+
+    sendBtn.addEventListener("click", send);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+  </script>
+</body>
+</html>
