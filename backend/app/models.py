@@ -1,10 +1,19 @@
-"""ORM models: customer Q&A pairs and the expert feedback attached to them."""
+"""ORM models: customer Q&A pairs, expert feedback, and app settings."""
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+
+
+class KeyValueSetting(Base):
+    """Generic key/value store for runtime configuration (e.g. agent_soul)."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
 
 class QAPair(Base):

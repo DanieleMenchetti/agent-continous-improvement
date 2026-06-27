@@ -109,23 +109,36 @@ select, input[type=number] {
 .toast.show { opacity: 1; }
 
 /* Config page */
-.config-section { margin-bottom: 28px; }
-.config-title { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
-.config-hint { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
-.config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.config-item {
-  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-  padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
-}
-.config-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-.config-value { font-size: 14px; font-family: ui-monospace, monospace; color: var(--accent-2); word-break: break-all; }
-.config-desc { font-size: 12px; color: var(--muted); }
-.config-item input[type=number] { width: 100%; }
-.config-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.config-section { margin-bottom: 36px; }
+.config-title { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+.config-hint { font-size: 13px; color: var(--muted); margin: 0 0 14px; line-height: 1.5; }
+.config-actions { display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+.config-status { font-size: 13px; color: var(--muted); }
 
-.health-row { display: flex; align-items: center; gap: 10px; font-size: 14px; }
-.health-dot {
-  width: 10px; height: 10px; border-radius: 50%; background: var(--border); flex-shrink: 0;
+#soulTextarea {
+  width: 100%; min-height: 180px; resize: vertical;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px; font-size: 14px; line-height: 1.6; font-family: inherit;
 }
-.health-dot.ok { background: var(--good); box-shadow: 0 0 6px var(--good); }
-.health-dot.err { background: #ff9aa5; box-shadow: 0 0 6px #ff9aa5; }
+#soulTextarea:focus { outline: none; border-color: var(--accent); }
+
+/* Drop zone */
+.drop-zone {
+  position: relative; border: 2px dashed var(--border); border-radius: 12px;
+  background: var(--panel); min-height: 160px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer; transition: border-color .15s, background .15s;
+}
+.drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.drop-zone.over { border-color: var(--accent); background: rgba(91,140,255,0.06); }
+.drop-zone.uploading { border-color: var(--accent-2); }
+.drop-zone.success { border-color: var(--good); background: rgba(45,212,191,0.05); }
+.drop-zone.error { border-color: #ff9aa5; background: rgba(255,154,165,0.05); }
+
+.drop-inner { display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.drop-icon { font-size: 36px; line-height: 1; }
+.drop-label { font-size: 14px; color: var(--text); }
+.drop-browse { color: var(--accent); cursor: pointer; text-decoration: underline; pointer-events: all; position: relative; z-index: 1; }
+.drop-hint { font-size: 12px; color: var(--muted); }
+.drop-result { margin-top: 12px; font-size: 13px; color: var(--muted); text-align: center; padding: 0 16px; }

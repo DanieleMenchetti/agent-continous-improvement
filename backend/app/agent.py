@@ -15,13 +15,12 @@ from langgraph.graph import END, START, StateGraph
 from .config import settings
 from . import vectorstore
 
-SYSTEM_PROMPT = """You are a domain assistant that continuously improves from expert feedback.
-
-You will be given EXPERT GUIDANCE retrieved from past, similar questions that a
-human domain expert reviewed. Treat this guidance as authoritative and prefer it
-over your own prior assumptions. If the guidance corrects a common mistake, make
-sure your answer reflects the correction. If no guidance is relevant, answer to
-the best of your ability and be clear when you are uncertain.
+SYSTEM_PROMPT = """
+You will be given EXPERT GUIDANCE retrieved internal knowledge. Treat this knowledge as
+authoritative and prefer it over your own prior assumptions. If the guidance
+corrects a common mistake, make sure your answer reflects the correction.
+If no guidance is relevant, answer to the best of your ability and
+be clear when you are uncertain.
 
 Answer concisely and helpfully."""
 
@@ -30,6 +29,7 @@ class AgentState(TypedDict):
     question: str
     retrieved: list[dict]
     answer: str
+    soul_prompt: str
 
 
 _llm: ChatGoogleGenerativeAI | None = None
@@ -71,7 +71,9 @@ def _generate(state: AgentState) -> AgentState:
         f"EXPERT GUIDANCE FROM PAST FEEDBACK:\n{context}\n\n"
         f"CUSTOMER QUESTION:\n{state['question']}"
     )
-    messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_content)]
+    soul = (state.get("soul_prompt") or "").strip()
+    system_content = f"{soul}\n\n{SYSTEM_PROMPT}" if soul else SYSTEM_PROMPT
+    messages = [SystemMessage(content=system_content), HumanMessage(content=user_content)]
     response = _get_llm().invoke(messages)
     state["answer"] = response.content
     return state
@@ -97,9 +99,9 @@ def get_agent():
     return _app
 
 
-def answer_question(question: str) -> tuple[str, list[dict]]:
+def answer_question(question: str, soul_prompt: str = "") -> tuple[str, list[dict]]:
     """Run the agent. Returns (answer, retrieved_feedback)."""
     result = get_agent().invoke(
-        {"question": question, "retrieved": [], "answer": ""}
+        {"question": question, "retrieved": [], "answer": "", "soul_prompt": soul_prompt}
     )
     return result["answer"], result["retrieved"]

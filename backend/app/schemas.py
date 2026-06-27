@@ -1,4 +1,5 @@
 """Pydantic request/response schemas."""
+
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -33,6 +34,11 @@ class FeedbackOut(BaseModel):
     is_correction: bool
     created_at: datetime
     updated_at: datetime
+
+
+# ---- Config ----
+class SoulPrompt(BaseModel):
+    prompt: str = ""
 
 
 # ---- Q&A pairs (expert review view) ----

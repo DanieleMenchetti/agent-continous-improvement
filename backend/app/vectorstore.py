@@ -81,6 +81,20 @@ def upsert_feedback(
     logger.info("Upserted feedback %s into vector store", feedback_id)
 
 
+def upsert_document_chunks(filename: str, chunks: list[str]) -> int:
+    """Embed and store text chunks extracted from an uploaded document."""
+    embeddings = _get_embeddings().embed_documents(chunks)
+    ids = [f"doc-{filename}-{i}" for i in range(len(chunks))]
+    get_collection().upsert(
+        ids=ids,
+        embeddings=embeddings,
+        documents=chunks,
+        metadatas=[{"source": filename, "chunk": i, "type": "document"} for i in range(len(chunks))],
+    )
+    logger.info("Upserted %d chunks from document '%s'", len(chunks), filename)
+    return len(chunks)
+
+
 def delete_feedback(feedback_id: int) -> None:
     try:
         get_collection().delete(ids=[_doc_id(feedback_id)])

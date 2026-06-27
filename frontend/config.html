@@ -19,40 +19,35 @@
 
   <div class="container">
 
+    <!-- Agent Soul -->
     <section class="config-section">
-      <h2 class="config-title">Backend settings</h2>
-      <p class="config-hint">Read from the running server. Change these via environment variables.</p>
-      <div id="backendSettings" class="config-grid">
-        <div class="config-item"><span class="config-label">Loading…</span></div>
-      </div>
-    </section>
-
-    <section class="config-section">
-      <h2 class="config-title">RAG overrides</h2>
-      <p class="config-hint">Stored locally in your browser. Override the server defaults for your session.</p>
-      <div class="config-grid">
-        <div class="config-item">
-          <label class="config-label" for="ragTopK">Top-K results</label>
-          <input type="number" id="ragTopK" min="1" max="20" placeholder="e.g. 4" />
-          <span class="config-desc">How many expert feedback chunks are injected into each answer.</span>
-        </div>
-        <div class="config-item">
-          <label class="config-label" for="ragMinRelevance">Min relevance (0–1)</label>
-          <input type="number" id="ragMinRelevance" min="0" max="1" step="0.05" placeholder="e.g. 0.0" />
-          <span class="config-desc">Similarity floor. Chunks below this score are discarded.</span>
-        </div>
-      </div>
+      <h2 class="config-title">Agent Soul</h2>
+      <p class="config-hint">
+        This prompt is stored in the database and is always prepended to the agent's
+        instructions before every chat response.
+      </p>
+      <textarea id="soulTextarea" placeholder="Describe the agent's personality, tone, rules, or domain constraints…"></textarea>
       <div class="config-actions">
-        <button id="saveOverrides">Save overrides</button>
-        <button class="secondary" id="clearOverrides">Clear overrides</button>
+        <button id="saveSoul">Save</button>
+        <span id="soulStatus" class="config-status"></span>
       </div>
     </section>
 
+    <!-- Documents Loader -->
     <section class="config-section">
-      <h2 class="config-title">System health</h2>
-      <div id="healthStatus" class="health-row">
-        <span class="health-dot" id="healthDot"></span>
-        <span id="healthText">Checking…</span>
+      <h2 class="config-title">Documents Loader</h2>
+      <p class="config-hint">
+        Drop a PDF here to index it into the knowledge base. Its content will be
+        retrieved during chat alongside expert feedback.
+      </p>
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept="application/pdf" />
+        <div class="drop-inner">
+          <span class="drop-icon">📄</span>
+          <span class="drop-label">Drag &amp; drop a PDF here, or <label for="fileInput" class="drop-browse">browse</label></span>
+          <span class="drop-hint">PDF only</span>
+        </div>
+        <div class="drop-result" id="dropResult"></div>
       </div>
     </section>
 
@@ -65,82 +60,96 @@
 
     // ── toast ──────────────────────────────────────────────────────────
     const toastEl = document.getElementById("toast");
-    function toast(msg) {
+    function toast(msg, ok = true) {
       toastEl.textContent = msg;
+      toastEl.style.background = ok ? "var(--good)" : "var(--warn)";
       toastEl.classList.add("show");
-      setTimeout(() => toastEl.classList.remove("show"), 1800);
+      setTimeout(() => toastEl.classList.remove("show"), 2000);
     }
 
-    // ── backend settings ───────────────────────────────────────────────
-    async function loadBackend() {
-      const el = document.getElementById("backendSettings");
+    // ── Agent Soul ─────────────────────────────────────────────────────
+    const soulTA = document.getElementById("soulTextarea");
+    const soulStatus = document.getElementById("soulStatus");
+
+    async function loadSoul() {
       try {
-        const res = await fetch(API + "/config");
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const cfg = await res.json();
-        el.innerHTML = Object.entries(cfg).map(([k, v]) => `
-          <div class="config-item">
-            <span class="config-label">${k}</span>
-            <span class="config-value">${v}</span>
-          </div>`).join("");
-      } catch (e) {
-        el.innerHTML = `<div class='config-item'><span class='config-label'>Could not load: ${e.message}</span></div>`;
-      }
-    }
-
-    // ── local overrides ────────────────────────────────────────────────
-    const LS_KEY = "rag_overrides";
-
-    function loadOverrides() {
-      const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return;
-      try {
-        const o = JSON.parse(raw);
-        if (o.rag_top_k != null) document.getElementById("ragTopK").value = o.rag_top_k;
-        if (o.rag_min_relevance != null) document.getElementById("ragMinRelevance").value = o.rag_min_relevance;
-      } catch {}
-    }
-
-    document.getElementById("saveOverrides").addEventListener("click", () => {
-      const topK = document.getElementById("ragTopK").value;
-      const minRel = document.getElementById("ragMinRelevance").value;
-      const obj = {};
-      if (topK !== "") obj.rag_top_k = Number(topK);
-      if (minRel !== "") obj.rag_min_relevance = Number(minRel);
-      localStorage.setItem(LS_KEY, JSON.stringify(obj));
-      toast("Overrides saved");
-    });
-
-    document.getElementById("clearOverrides").addEventListener("click", () => {
-      localStorage.removeItem(LS_KEY);
-      document.getElementById("ragTopK").value = "";
-      document.getElementById("ragMinRelevance").value = "";
-      toast("Overrides cleared");
-    });
-
-    // ── health ─────────────────────────────────────────────────────────
-    async function checkHealth() {
-      const dot = document.getElementById("healthDot");
-      const txt = document.getElementById("healthText");
-      try {
-        const res = await fetch(API + "/health");
+        const res = await fetch(API + "/config/soul");
         const data = await res.json();
-        dot.classList.add("ok");
-        txt.textContent = "API reachable — " + data.status;
-      } catch (e) {
-        dot.classList.add("err");
-        txt.textContent = "API unreachable: " + e.message;
+        soulTA.value = data.prompt || "";
+      } catch {
+        soulStatus.textContent = "Could not load.";
       }
     }
+
+    document.getElementById("saveSoul").addEventListener("click", async () => {
+      soulStatus.textContent = "Saving…";
+      try {
+        const res = await fetch(API + "/config/soul", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: soulTA.value }),
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        soulStatus.textContent = "Saved ✓";
+        toast("Agent Soul saved");
+        setTimeout(() => { soulStatus.textContent = ""; }, 2500);
+      } catch (e) {
+        soulStatus.textContent = "Error: " + e.message;
+        toast("Save failed", false);
+      }
+    });
+
+    // ── Documents Loader ───────────────────────────────────────────────
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const dropResult = document.getElementById("dropResult");
+
+    function setDropState(state) {
+      dropZone.classList.remove("over", "uploading", "success", "error");
+      if (state) dropZone.classList.add(state);
+    }
+
+    async function uploadFile(file) {
+      if (!file || !file.name.toLowerCase().endsWith(".pdf")) {
+        setDropState("error");
+        dropResult.textContent = "Only PDF files are accepted.";
+        toast("Only PDF files are accepted.", false);
+        return;
+      }
+      setDropState("uploading");
+      dropResult.textContent = "Uploading " + file.name + "…";
+      const form = new FormData();
+      form.append("file", file);
+      try {
+        const res = await fetch(API + "/config/documents", { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "HTTP " + res.status);
+        setDropState("success");
+        dropResult.textContent =
+          `✓ ${data.filename} — ${data.pages} page(s), ${data.chunks_indexed} chunks indexed.`;
+        toast("Document indexed");
+      } catch (e) {
+        setDropState("error");
+        dropResult.textContent = "Error: " + e.message;
+        toast("Upload failed", false);
+      }
+    }
+
+    dropZone.addEventListener("dragover", (e) => { e.preventDefault(); setDropState("over"); });
+    dropZone.addEventListener("dragleave", () => setDropState(null));
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      setDropState(null);
+      uploadFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener("change", () => uploadFile(fileInput.files[0]));
 
     // ── hamburger nav ──────────────────────────────────────────────────
     document.getElementById("navToggle").addEventListener("click", () => {
       document.getElementById("mainNav").classList.toggle("open");
     });
 
-    loadBackend();
-    loadOverrides();
-    checkHealth();
+    loadSoul();
   </script>
 </body>
 </html>
