@@ -9,9 +9,11 @@
 <body>
   <header>
     <h1>💬 Domain Assistant</h1>
-    <nav>
-      <a href="chat.html">Chat</a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">&#9776;</button>
+    <nav id="mainNav">
+      <a href="chat.html" class="active">Chat</a>
       <a href="feedback.html">Expert review</a>
+      <a href="config.html">Config</a>
     </nav>
   </header>
 
@@ -80,6 +82,10 @@
     sendBtn.addEventListener("click", send);
     inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+
+    document.getElementById("navToggle").addEventListener("click", () => {
+      document.getElementById("mainNav").classList.toggle("open");
     });
   </script>
 </body>

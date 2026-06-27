@@ -9,9 +9,11 @@
 <body>
   <header>
     <h1>🧠 Expert Review</h1>
-    <nav>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">&#9776;</button>
+    <nav id="mainNav">
       <a href="chat.html">Chat</a>
-      <a href="feedback.html">Expert review</a>
+      <a href="feedback.html" class="active">Expert review</a>
+      <a href="config.html">Config</a>
     </nav>
   </header>
 
@@ -118,6 +120,9 @@
 
     document.getElementById("refresh").addEventListener("click", load);
     onlyUnreviewed.addEventListener("change", load);
+    document.getElementById("navToggle").addEventListener("click", () => {
+      document.getElementById("mainNav").classList.toggle("open");
+    });
     load();
   </script>
 </body>

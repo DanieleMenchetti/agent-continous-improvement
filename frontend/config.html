@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Config</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>⚙️ Config</h1>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">&#9776;</button>
+    <nav id="mainNav">
+      <a href="chat.html">Chat</a>
+      <a href="feedback.html">Expert review</a>
+      <a href="config.html" class="active">Config</a>
+    </nav>
+  </header>
+
+  <div class="container">
+
+    <section class="config-section">
+      <h2 class="config-title">Backend settings</h2>
+      <p class="config-hint">Read from the running server. Change these via environment variables.</p>
+      <div id="backendSettings" class="config-grid">
+        <div class="config-item"><span class="config-label">Loading…</span></div>
+      </div>
+    </section>
+
+    <section class="config-section">
+      <h2 class="config-title">RAG overrides</h2>
+      <p class="config-hint">Stored locally in your browser. Override the server defaults for your session.</p>
+      <div class="config-grid">
+        <div class="config-item">
+          <label class="config-label" for="ragTopK">Top-K results</label>
+          <input type="number" id="ragTopK" min="1" max="20" placeholder="e.g. 4" />
+          <span class="config-desc">How many expert feedback chunks are injected into each answer.</span>
+        </div>
+        <div class="config-item">
+          <label class="config-label" for="ragMinRelevance">Min relevance (0–1)</label>
+          <input type="number" id="ragMinRelevance" min="0" max="1" step="0.05" placeholder="e.g. 0.0" />
+          <span class="config-desc">Similarity floor. Chunks below this score are discarded.</span>
+        </div>
+      </div>
+      <div class="config-actions">
+        <button id="saveOverrides">Save overrides</button>
+        <button class="secondary" id="clearOverrides">Clear overrides</button>
+      </div>
+    </section>
+
+    <section class="config-section">
+      <h2 class="config-title">System health</h2>
+      <div id="healthStatus" class="health-row">
+        <span class="health-dot" id="healthDot"></span>
+        <span id="healthText">Checking…</span>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API = "/api";
+
+    // ── toast ──────────────────────────────────────────────────────────
+    const toastEl = document.getElementById("toast");
+    function toast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add("show");
+      setTimeout(() => toastEl.classList.remove("show"), 1800);
+    }
+
+    // ── backend settings ───────────────────────────────────────────────
+    async function loadBackend() {
+      const el = document.getElementById("backendSettings");
+      try {
+        const res = await fetch(API + "/config");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const cfg = await res.json();
+        el.innerHTML = Object.entries(cfg).map(([k, v]) => `
+          <div class="config-item">
+            <span class="config-label">${k}</span>
+            <span class="config-value">${v}</span>
+          </div>`).join("");
+      } catch (e) {
+        el.innerHTML = `<div class='config-item'><span class='config-label'>Could not load: ${e.message}</span></div>`;
+      }
+    }
+
+    // ── local overrides ────────────────────────────────────────────────
+    const LS_KEY = "rag_overrides";
+
+    function loadOverrides() {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      try {
+        const o = JSON.parse(raw);
+        if (o.rag_top_k != null) document.getElementById("ragTopK").value = o.rag_top_k;
+        if (o.rag_min_relevance != null) document.getElementById("ragMinRelevance").value = o.rag_min_relevance;
+      } catch {}
+    }
+
+    document.getElementById("saveOverrides").addEventListener("click", () => {
+      const topK = document.getElementById("ragTopK").value;
+      const minRel = document.getElementById("ragMinRelevance").value;
+      const obj = {};
+      if (topK !== "") obj.rag_top_k = Number(topK);
+      if (minRel !== "") obj.rag_min_relevance = Number(minRel);
+      localStorage.setItem(LS_KEY, JSON.stringify(obj));
+      toast("Overrides saved");
+    });
+
+    document.getElementById("clearOverrides").addEventListener("click", () => {
+      localStorage.removeItem(LS_KEY);
+      document.getElementById("ragTopK").value = "";
+      document.getElementById("ragMinRelevance").value = "";
+      toast("Overrides cleared");
+    });
+
+    // ── health ─────────────────────────────────────────────────────────
+    async function checkHealth() {
+      const dot = document.getElementById("healthDot");
+      const txt = document.getElementById("healthText");
+      try {
+        const res = await fetch(API + "/health");
+        const data = await res.json();
+        dot.classList.add("ok");
+        txt.textContent = "API reachable — " + data.status;
+      } catch (e) {
+        dot.classList.add("err");
+        txt.textContent = "API unreachable: " + e.message;
+      }
+    }
+
+    // ── hamburger nav ──────────────────────────────────────────────────
+    document.getElementById("navToggle").addEventListener("click", () => {
+      document.getElementById("mainNav").classList.toggle("open");
+    });
+
+    loadBackend();
+    loadOverrides();
+    checkHealth();
+  </script>
+</body>
+</html>

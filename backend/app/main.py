@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import Base, engine
-from .routers import chat, feedback, qa
+from .routers import chat, config, feedback, qa
 
 logging.basicConfig(level=logging.INFO)
 
@@ -34,3 +34,4 @@ def health() -> dict:
 app.include_router(chat.router)
 app.include_router(qa.router)
 app.include_router(feedback.router)
+app.include_router(config.router)
