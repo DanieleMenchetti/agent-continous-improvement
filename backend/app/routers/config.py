@@ -3,9 +3,11 @@ import io
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
-from .. import vectorstore
+from .. import ingest_agent, vectorstore, wiki
 from ..database import get_db
 from ..models import KeyValueSetting
 from ..schemas import SoulPrompt
@@ -71,6 +73,44 @@ async def upload_document(file: UploadFile, db: Session = Depends(get_db)) -> di
 
     chunks = _chunk_text(full_text)
     safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", file.filename)
-    count = vectorstore.upsert_document_chunks(safe_name, chunks)
+    # These do blocking network I/O (embeddings + many LLM calls); run them off the
+    # event loop so the server stays responsive during a long ingest.
+    count = await run_in_threadpool(vectorstore.upsert_document_chunks, safe_name, chunks)
 
-    return {"filename": file.filename, "pages": len(reader.pages), "chunks_indexed": count}
+    # Incrementally build/extend the markdown wiki from this document.
+    wiki_result = await run_in_threadpool(
+        ingest_agent.ingest_document, file.filename, full_text
+    )
+
+    return {
+        "filename": file.filename,
+        "pages": len(reader.pages),
+        "chunks_indexed": count,
+        "wiki": wiki_result,
+    }
+
+
+# ── Wiki browsing (read-only) ───────────────────────────────────────────────
+
+@router.get("/wiki")
+def list_wiki() -> dict:
+    """List the wiki page catalog (sources + generated pages) and stats."""
+    wiki.ensure_wiki()
+    return {
+        "stats": wiki.stats(),
+        "sources": wiki.list_pages(wiki.SOURCES_DIR),
+        **{cat: wiki.list_pages(cat) for cat in wiki.CATEGORIES},
+    }
+
+
+@router.get("/wiki/{category}/{slug}", response_class=PlainTextResponse)
+def get_wiki_page(category: str, slug: str) -> str:
+    """Return the raw markdown of a single wiki page."""
+    allowed = (*wiki.CATEGORIES, wiki.SOURCES_DIR)
+    if category not in allowed:
+        raise HTTPException(status_code=404, detail="Unknown wiki category.")
+    safe_slug = re.sub(r"[^a-zA-Z0-9._-]", "", slug)
+    path = wiki._root() / category / f"{safe_slug}.md"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Wiki page not found.")
+    return path.read_text(encoding="utf-8")

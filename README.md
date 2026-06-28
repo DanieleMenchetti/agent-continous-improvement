@@ -66,6 +66,35 @@ Services (`docker-compose.yml`): `postgres`, `chroma`, `backend`, `frontend`.
 | GET    | `/api/qa/{id}`        | Get one Q&A pair                          |
 | PUT    | `/api/feedback/{qa_id}` | Create/update feedback (syncs to vector DB) |
 | DELETE | `/api/feedback/{qa_id}` | Remove feedback (and its vector entry)  |
+| POST   | `/api/config/documents` | Upload a PDF; ingests it into the wiki    |
+| GET    | `/api/config/wiki`      | List wiki pages + stats                   |
+| GET    | `/api/config/wiki/{category}/{slug}` | Raw markdown of one wiki page |
+
+## Document ingestion → markdown wiki
+
+Uploading a PDF (Config page or `POST /api/config/documents`) runs a fixed-pipeline
+**ingestion agent** that builds a persistent markdown wiki on the server, following
+[karpathy's LLM-wiki guidelines](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
+The wiki lives in a Docker volume (`wikidata` → `/data/wiki`, configurable via `WIKI_DIR`)
+with three layers:
+
+```
+/data/wiki/
+  CLAUDE.md          # schema & conventions (written once)
+  index.md           # auto-regenerated catalog of all pages
+  log.md             # append-only ingest log
+  sources/           # immutable raw extracted text, one per document
+  summaries/         # one summary page per source
+  entities/          # pages about named things (merged across sources)
+  concepts/          # pages about ideas/topics (merged across sources)
+```
+
+The pipeline: **summarize** the source → **extract** entities/concepts → **write or
+non-destructively merge** each page → **regenerate** `index.md` → **append** to `log.md`.
+Ingestion is **incremental**: re-ingesting or adding new documents extends existing
+pages and never deletes prior wiki data (sources and the log are append-only; existing
+pages are merged, not replaced). The wiki is not yet wired into chat retrieval — the
+uploaded text is still chunk-indexed into Chroma for chat as before.
 
 ## Configuration
 
@@ -79,6 +108,7 @@ Backend settings (env vars, see `backend/app/config.py`):
 | `RAG_TOP_K`       | `4`                          |
 | `DATABASE_URL`    | Postgres DSN                 |
 | `CHROMA_HOST/PORT`| `chroma` / `8000`            |
+| `WIKI_DIR`        | `/data/wiki`                 |
 
 ## Notes
 

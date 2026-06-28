@@ -12,3 +12,4 @@ chromadb==0.5.23
 httpx==0.28.1
 pypdf==5.1.0
 python-multipart==0.0.20
+pyyaml==6.0.2

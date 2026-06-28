@@ -37,8 +37,10 @@
     <section class="config-section">
       <h2 class="config-title">Documents Loader</h2>
       <p class="config-hint">
-        Drop a PDF here to index it into the knowledge base. Its content will be
-        retrieved during chat alongside expert feedback.
+        Drop a PDF here to ingest it. An agent extracts its content into a persistent
+        markdown <strong>wiki</strong> on the server (entity &amp; concept pages, an index,
+        and an append-only log), merging into existing pages without deleting prior
+        knowledge. The text is also chunk-indexed for chat retrieval.
       </p>
       <div class="drop-zone" id="dropZone">
         <input type="file" id="fileInput" accept="application/pdf" />
@@ -122,12 +124,19 @@
       form.append("file", file);
       try {
         const res = await fetch(API + "/config/documents", { method: "POST", body: form });
-        const data = await res.json();
+        const raw = await res.text();
+        let data = {};
+        try { data = raw ? JSON.parse(raw) : {}; }
+        catch { throw new Error("HTTP " + res.status + " — server did not return JSON (the ingest may have timed out)."); }
         if (!res.ok) throw new Error(data.detail || "HTTP " + res.status);
         setDropState("success");
+        const w = data.wiki || {};
+        const created = (w.pages_created || []).length;
+        const updated = (w.pages_updated || []).length;
         dropResult.textContent =
-          `✓ ${data.filename} — ${data.pages} page(s), ${data.chunks_indexed} chunks indexed.`;
-        toast("Document indexed");
+          `✓ ${data.filename} — ${data.pages} page(s), ${data.chunks_indexed} chunks indexed. ` +
+          `Wiki: ${created} new page(s), ${updated} updated.`;
+        toast("Document ingested into wiki");
       } catch (e) {
         setDropState("error");
         dropResult.textContent = "Error: " + e.message;

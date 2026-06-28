@@ -35,6 +35,9 @@ services:
       CHROMA_PORT: "8000"
       CHAT_MODEL: gemini-2.5-flash
       EMBEDDING_MODEL: models/gemini-embedding-001
+      WIKI_DIR: /data/wiki
+    volumes:
+      - wikidata:/data/wiki
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,3 +56,4 @@ services:
 volumes:
   pgdata:
   chromadata:
+  wikidata:

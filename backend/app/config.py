@@ -22,5 +22,8 @@ class Settings(BaseSettings):
     rag_top_k: int = 4
     rag_min_relevance: float = 0.0  # 0..1 similarity floor (0 = keep all)
 
+    # Wiki (LLM-maintained markdown knowledge base built from ingested documents)
+    wiki_dir: str = "/data/wiki"
+
 
 settings = Settings()
