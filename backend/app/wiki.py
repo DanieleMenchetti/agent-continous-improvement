@@ -132,6 +132,22 @@ def list_pages(category: str) -> list[str]:
     return sorted(p.stem for p in d.glob("*.md"))
 
 
+def page_info(category: str, slug: str) -> dict:
+    """Lightweight metadata for a page (title/summary/updated), read from frontmatter."""
+    page = read_page(category, slug)
+    meta = page[0] if page else {}
+    return {
+        "slug": slug,
+        "title": meta.get("title", slug),
+        "summary": meta.get("summary", ""),
+        "updated": str(meta.get("updated", "")),
+    }
+
+
+def list_page_infos(category: str) -> list[dict]:
+    return [page_info(category, slug) for slug in list_pages(category)]
+
+
 # ── Sources (immutable, append-only) ────────────────────────────────────────
 
 def source_exists(slug: str) -> bool:

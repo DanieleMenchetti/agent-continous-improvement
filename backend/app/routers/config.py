@@ -94,12 +94,17 @@ async def upload_document(file: UploadFile, db: Session = Depends(get_db)) -> di
 
 @router.get("/wiki")
 def list_wiki() -> dict:
-    """List the wiki page catalog (sources + generated pages) and stats."""
+    """List the wiki page catalog (sources + generated pages) and stats.
+
+    Each page entry carries ``{slug, title, summary, updated}`` read from its
+    frontmatter, so a client can render a table of contents without fetching
+    every page individually.
+    """
     wiki.ensure_wiki()
     return {
         "stats": wiki.stats(),
-        "sources": wiki.list_pages(wiki.SOURCES_DIR),
-        **{cat: wiki.list_pages(cat) for cat in wiki.CATEGORIES},
+        "sources": wiki.list_page_infos(wiki.SOURCES_DIR),
+        **{cat: wiki.list_page_infos(cat) for cat in wiki.CATEGORIES},
     }
 
 

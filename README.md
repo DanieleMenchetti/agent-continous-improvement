@@ -55,6 +55,7 @@ Services (`docker-compose.yml`): `postgres`, `chroma`, `backend`, `frontend`.
 4. Open:
    - Customer chat: http://localhost:8080/chat.html
    - Expert review: http://localhost:8080/feedback.html
+   - Wiki reader: http://localhost:8080/wiki.html
    - API docs: http://localhost:8000/docs
 
 ## API summary
@@ -67,7 +68,7 @@ Services (`docker-compose.yml`): `postgres`, `chroma`, `backend`, `frontend`.
 | PUT    | `/api/feedback/{qa_id}` | Create/update feedback (syncs to vector DB) |
 | DELETE | `/api/feedback/{qa_id}` | Remove feedback (and its vector entry)  |
 | POST   | `/api/config/documents` | Upload a PDF; ingests it into the wiki    |
-| GET    | `/api/config/wiki`      | List wiki pages + stats                   |
+| GET    | `/api/config/wiki`      | Catalog of wiki pages (slug/title/summary) + stats |
 | GET    | `/api/config/wiki/{category}/{slug}` | Raw markdown of one wiki page |
 
 ## Document ingestion → markdown wiki
@@ -95,6 +96,11 @@ Ingestion is **incremental**: re-ingesting or adding new documents extends exist
 pages and never deletes prior wiki data (sources and the log are append-only; existing
 pages are merged, not replaced). The wiki is not yet wired into chat retrieval — the
 uploaded text is still chunk-indexed into Chroma for chat as before.
+
+The wiki can be read as a book at **`/wiki.html`**: a contents sidebar (chapters grouped
+by Concepts / Entities / Summaries / Sources), a paper-style reading surface, page-flip
+Previous/Next (also ←/→ keys), and clickable `[[category/slug]]` cross-references. It
+renders the markdown client-side and deep-links each page via the URL hash.
 
 ## Configuration
 

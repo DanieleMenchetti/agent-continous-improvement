@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wiki</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>📖 Knowledge Wiki</h1>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">&#9776;</button>
+    <nav id="mainNav">
+      <a href="chat.html">Chat</a>
+      <a href="feedback.html">Expert review</a>
+      <a href="config.html">Config</a>
+      <a href="wiki.html" class="active">Wiki</a>
+    </nav>
+  </header>
+
+  <div class="book">
+    <!-- Table of contents -->
+    <aside class="book-index" id="bookIndex">
+      <div class="book-index-head">
+        <span class="book-index-title">Contents</span>
+        <button class="book-index-close" id="indexClose" aria-label="Hide contents">&times;</button>
+      </div>
+      <div class="book-toc" id="bookToc">
+        <div class="book-toc-loading">Loading…</div>
+      </div>
+    </aside>
+
+    <!-- The page surface -->
+    <main class="book-stage">
+      <button class="book-index-open" id="indexOpen" aria-label="Show contents">&#9776; Contents</button>
+
+      <article class="book-page" id="bookPage">
+        <div class="book-empty">Loading the wiki…</div>
+      </article>
+
+      <nav class="book-flip" id="bookFlip" hidden>
+        <button class="book-flip-btn" id="prevBtn">&larr; Previous</button>
+        <span class="book-flip-meta" id="flipMeta"></span>
+        <button class="book-flip-btn" id="nextBtn">Next &rarr;</button>
+      </nav>
+    </main>
+  </div>
+
+  <script>
+    const API = "/api";
+
+    // Order chapters the way a reader would want them: ideas first, then the
+    // named things, then per-document summaries, then the raw sources.
+    const CATEGORY_ORDER = [
+      { key: "concepts",  label: "Concepts" },
+      { key: "entities",  label: "Entities" },
+      { key: "summaries", label: "Summaries" },
+      { key: "sources",   label: "Sources" },
+    ];
+
+    let pages = [];                 // flat, ordered list of {category, label, slug, title, summary}
+    const titleBySlug = new Map();  // slug -> title, for resolving [[wiki-links]]
+    let current = -1;               // index into `pages`, or -1 for the contents cover
+    const cache = new Map();        // "cat/slug" -> rendered HTML
+
+    const tocEl   = document.getElementById("bookToc");
+    const pageEl  = document.getElementById("bookPage");
+    const flipEl  = document.getElementById("bookFlip");
+    const flipMeta = document.getElementById("flipMeta");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const indexEl = document.getElementById("bookIndex");
+
+    // ── Minimal, self-contained markdown renderer ───────────────────────
+    // Handles the constructs the ingestion agent produces: frontmatter,
+    // headings, lists, blockquotes, code (fenced + inline), rules, bold/
+    // italic, [text](url) links and internal [[category/slug]] wiki-links.
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function stripFrontmatter(md) {
+      if (md.startsWith("---")) {
+        const end = md.indexOf("\n---", 3);
+        if (end !== -1) {
+          const after = md.indexOf("\n", end + 1);
+          return after !== -1 ? md.slice(after + 1) : "";
+        }
+      }
+      return md;
+    }
+
+    function inline(text) {
+      let s = escapeHtml(text);
+      // inline code first so its contents are not further formatted
+      const codes = [];
+      s = s.replace(/`([^`]+)`/g, (_, c) => {
+        codes.push(c);
+        return "\uE000" + (codes.length - 1) + "\uE000";
+      });
+      // internal wiki-links [[category/slug]] or [[slug]]
+      s = s.replace(/\[\[([^\]]+)\]\]/g, (_, ref) => {
+        let cat = "", slug = ref.trim();
+        if (slug.includes("/")) { const p = slug.split("/"); cat = p[0]; slug = p[1]; }
+        const label = titleBySlug.get(slug) || slug.replace(/-/g, " ");
+        return `<a class="wikilink" data-cat="${cat}" data-slug="${slug}">${escapeHtml(label)}</a>`;
+      });
+      // external / standard links [text](url)
+      s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, t, url) =>
+        `<a href="${url}" target="_blank" rel="noopener">${t}</a>`);
+      // bold then italic
+      s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      s = s.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+      // restore inline code
+      s = s.replace(/\uE000(\d+)\uE000/g, (_, i) => `<code>${escapeHtml(codes[+i] ?? "")}</code>`);
+      return s;
+    }
+
+    function renderMarkdown(md) {
+      const lines = stripFrontmatter(md).split("\n");
+      const out = [];
+      let i = 0;
+      let listType = null;        // "ul" | "ol" | null
+      const closeList = () => { if (listType) { out.push(`</${listType}>`); listType = null; } };
+
+      while (i < lines.length) {
+        const line = lines[i];
+
+        // fenced code block
+        const fence = line.match(/^```(.*)$/);
+        if (fence) {
+          closeList();
+          const buf = [];
+          i++;
+          while (i < lines.length && !lines[i].startsWith("```")) { buf.push(lines[i]); i++; }
+          i++; // skip closing fence
+          out.push(`<pre><code>${escapeHtml(buf.join("\n"))}</code></pre>`);
+          continue;
+        }
+
+        // blank line
+        if (!line.trim()) { closeList(); i++; continue; }
+
+        // horizontal rule
+        if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) { closeList(); out.push("<hr>"); i++; continue; }
+
+        // heading
+        const h = line.match(/^(#{1,6})\s+(.*)$/);
+        if (h) { closeList(); const lvl = h[1].length; out.push(`<h${lvl}>${inline(h[2])}</h${lvl}>`); i++; continue; }
+
+        // blockquote (collapse consecutive > lines)
+        if (/^\s*>/.test(line)) {
+          closeList();
+          const buf = [];
+          while (i < lines.length && /^\s*>/.test(lines[i])) { buf.push(lines[i].replace(/^\s*>\s?/, "")); i++; }
+          out.push(`<blockquote>${inline(buf.join(" "))}</blockquote>`);
+          continue;
+        }
+
+        // unordered list
+        const ul = line.match(/^\s*[-*]\s+(.*)$/);
+        if (ul) { if (listType !== "ul") { closeList(); out.push("<ul>"); listType = "ul"; } out.push(`<li>${inline(ul[1])}</li>`); i++; continue; }
+
+        // ordered list
+        const ol = line.match(/^\s*\d+\.\s+(.*)$/);
+        if (ol) { if (listType !== "ol") { closeList(); out.push("<ol>"); listType = "ol"; } out.push(`<li>${inline(ol[1])}</li>`); i++; continue; }
+
+        // paragraph (gather until blank/structural line)
+        closeList();
+        const buf = [line];
+        i++;
+        while (i < lines.length && lines[i].trim() &&
+               !/^(#{1,6}\s|\s*[-*]\s|\s*\d+\.\s|\s*>|```)/.test(lines[i]) &&
+               !/^\s*(---|\*\*\*|___)\s*$/.test(lines[i])) {
+          buf.push(lines[i]); i++;
+        }
+        out.push(`<p>${inline(buf.join(" "))}</p>`);
+      }
+      closeList();
+      return out.join("\n");
+    }
+
+    // ── Data loading ────────────────────────────────────────────────────
+    async function loadCatalog() {
+      const res = await fetch(API + "/config/wiki");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+
+      pages = [];
+      titleBySlug.clear();
+      for (const { key, label } of CATEGORY_ORDER) {
+        const entries = data[key] || [];
+        for (const e of entries) {
+          pages.push({ category: key, label, slug: e.slug, title: e.title || e.slug, summary: e.summary || "" });
+          titleBySlug.set(e.slug, e.title || e.slug);
+        }
+      }
+      return data.stats || {};
+    }
+
+    async function fetchPage(category, slug) {
+      const key = category + "/" + slug;
+      if (cache.has(key)) return cache.get(key);
+      const res = await fetch(`${API}/config/wiki/${category}/${slug}`);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const html = renderMarkdown(await res.text());
+      cache.set(key, html);
+      return html;
+    }
+
+    // ── Rendering ───────────────────────────────────────────────────────
+    function buildToc() {
+      if (!pages.length) {
+        tocEl.innerHTML = `<div class="book-toc-empty">No pages yet.</div>`;
+        return;
+      }
+      const groups = new Map();
+      pages.forEach((p, idx) => {
+        if (!groups.has(p.label)) groups.set(p.label, []);
+        groups.get(p.label).push({ ...p, idx });
+      });
+      const frag = [];
+      frag.push(`<a class="toc-cover" data-idx="-1">Table of Contents</a>`);
+      for (const [label, items] of groups) {
+        frag.push(`<div class="toc-group"><div class="toc-group-title">${label}</div>`);
+        for (const it of items) {
+          frag.push(`<a class="toc-link" data-idx="${it.idx}" title="${escapeHtml(it.summary)}">${escapeHtml(it.title)}</a>`);
+        }
+        frag.push(`</div>`);
+      }
+      tocEl.innerHTML = frag.join("");
+    }
+
+    function renderCover() {
+      const groups = new Map();
+      pages.forEach((p) => {
+        if (!groups.has(p.label)) groups.set(p.label, []);
+        groups.get(p.label).push(p);
+      });
+      let html = `<h1 class="cover-title">Knowledge Wiki</h1>
+        <p class="cover-sub">A living book, written from the documents you've ingested. ` +
+        `Pick a chapter from the contents, or turn the page.</p>`;
+      if (!pages.length) {
+        html += `<div class="book-empty">The wiki is empty. Head to
+          <a href="config.html">Config</a> and upload a PDF to begin filling these pages.</div>`;
+      } else {
+        for (const [label, items] of groups) {
+          html += `<h2 class="cover-section">${label}</h2><ul class="cover-list">`;
+          for (const it of items) {
+            const idx = pages.indexOf(it);
+            html += `<li><a class="cover-link" data-idx="${idx}">${escapeHtml(it.title)}</a>` +
+              (it.summary ? `<span class="cover-desc"> — ${escapeHtml(it.summary)}</span>` : "") + `</li>`;
+          }
+          html += `</ul>`;
+        }
+      }
+      pageEl.innerHTML = html;
+      flipMeta.textContent = pages.length ? `${pages.length} page${pages.length === 1 ? "" : "s"}` : "";
+      prevBtn.disabled = true;
+      nextBtn.disabled = pages.length === 0;
+      flipEl.hidden = false;
+    }
+
+    async function show(idx, { push = true } = {}) {
+      current = idx;
+      highlightToc();
+      indexEl.classList.remove("open");
+
+      if (idx < 0) { renderCover(); if (push) setHash(""); pageEl.scrollTo?.(0, 0); window.scrollTo(0, 0); return; }
+
+      const p = pages[idx];
+      pageEl.innerHTML = `<div class="book-empty">Loading…</div>`;
+      try {
+        const body = await fetchPage(p.category, p.slug);
+        pageEl.innerHTML =
+          `<div class="page-kicker">${p.label}</div>` +
+          `<div class="page-body">${body}</div>`;
+      } catch (e) {
+        pageEl.innerHTML = `<div class="book-empty">Could not load this page (${e.message}).</div>`;
+      }
+      flipEl.hidden = false;
+      prevBtn.disabled = false; // "Previous" from page 0 returns to the cover
+      nextBtn.disabled = idx >= pages.length - 1;
+      flipMeta.textContent = `${idx + 1} / ${pages.length}`;
+      if (push) setHash(`${p.category}/${p.slug}`);
+      pageEl.scrollTo?.(0, 0);
+      window.scrollTo(0, 0);
+    }
+
+    function highlightToc() {
+      tocEl.querySelectorAll("[data-idx]").forEach((a) => {
+        a.classList.toggle("active", Number(a.dataset.idx) === current);
+      });
+    }
+
+    function setHash(h) {
+      const want = h ? "#" + h : "#";
+      if (location.hash !== want) history.pushState(null, "", want);
+    }
+
+    function go(delta) {
+      const next = current + delta;
+      if (next < -1 || next >= pages.length) return;
+      show(next);
+    }
+
+    // ── Events ──────────────────────────────────────────────────────────
+    tocEl.addEventListener("click", (e) => {
+      const a = e.target.closest("[data-idx]");
+      if (a) { e.preventDefault(); show(Number(a.dataset.idx)); }
+    });
+
+    pageEl.addEventListener("click", (e) => {
+      const cover = e.target.closest(".cover-link");
+      if (cover) { e.preventDefault(); show(Number(cover.dataset.idx)); return; }
+      const link = e.target.closest(".wikilink");
+      if (link) {
+        e.preventDefault();
+        const { cat, slug } = link.dataset;
+        let idx = pages.findIndex((p) => p.slug === slug && (!cat || p.category === cat));
+        if (idx === -1) idx = pages.findIndex((p) => p.slug === slug);
+        if (idx !== -1) show(idx);
+      }
+    });
+
+    prevBtn.addEventListener("click", () => go(-1));
+    nextBtn.addEventListener("click", () => go(1));
+
+    document.addEventListener("keydown", (e) => {
+      if (/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) return;
+      if (e.key === "ArrowLeft") go(-1);
+      if (e.key === "ArrowRight") go(1);
+    });
+
+    window.addEventListener("popstate", () => routeFromHash());
+
+    function routeFromHash() {
+      const h = decodeURIComponent(location.hash.replace(/^#/, ""));
+      if (!h) { show(-1, { push: false }); return; }
+      const [cat, slug] = h.split("/");
+      const idx = pages.findIndex((p) => p.category === cat && p.slug === slug);
+      show(idx === -1 ? -1 : idx, { push: false });
+    }
+
+    // index open/close (mobile)
+    document.getElementById("indexOpen").addEventListener("click", () => indexEl.classList.add("open"));
+    document.getElementById("indexClose").addEventListener("click", () => indexEl.classList.remove("open"));
+    document.getElementById("navToggle").addEventListener("click", () =>
+      document.getElementById("mainNav").classList.toggle("open"));
+
+    // ── Boot ────────────────────────────────────────────────────────────
+    (async () => {
+      try {
+        await loadCatalog();
+        buildToc();
+        routeFromHash();
+      } catch (e) {
+        pageEl.innerHTML = `<div class="book-empty">Could not load the wiki (${e.message}).</div>`;
+        tocEl.innerHTML = "";
+      }
+    })();
+  </script>
+</body>
+</html>
