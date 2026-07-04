@@ -6,7 +6,7 @@
   <title>Knowledge</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="book-body">
   <header>
     <h1>📖 Knowledge</h1>
     <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">&#9776;</button>
@@ -34,15 +34,17 @@
     <main class="book-stage">
       <button class="book-index-open" id="indexOpen" aria-label="Show contents">&#9776; Contents</button>
 
-      <article class="book-page" id="bookPage">
-        <div class="book-empty">Loading the knowledge…</div>
-      </article>
+      <div class="book-reader">
+        <article class="book-page" id="bookPage">
+          <div class="book-empty">Loading the knowledge…</div>
+        </article>
 
-      <nav class="book-flip" id="bookFlip" hidden>
-        <button class="book-flip-btn" id="prevBtn">&larr; Previous</button>
-        <span class="book-flip-meta" id="flipMeta"></span>
-        <button class="book-flip-btn" id="nextBtn">Next &rarr;</button>
-      </nav>
+        <nav class="book-flip" id="bookFlip" hidden>
+          <button class="book-flip-btn book-flip-prev" id="prevBtn" aria-label="Previous page">&larr;</button>
+          <button class="book-flip-btn book-flip-next" id="nextBtn" aria-label="Next page">&rarr;</button>
+          <span class="book-flip-meta" id="flipMeta"></span>
+        </nav>
+      </div>
     </main>
   </div>
 
