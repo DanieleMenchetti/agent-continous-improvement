@@ -7,10 +7,10 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
-from .. import ingest_agent, vectorstore, wiki
+from .. import ingest_agent, lint_agent, vectorstore, wiki
 from ..database import get_db
 from ..models import KeyValueSetting
-from ..schemas import SoulPrompt, WikiPageEdit
+from ..schemas import LintReport, SoulPrompt, WikiPageEdit
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -106,6 +106,19 @@ def list_wiki() -> dict:
         "sources": wiki.list_page_infos(wiki.SOURCES_DIR),
         **{cat: wiki.list_page_infos(cat) for cat in wiki.CATEGORIES},
     }
+
+
+@router.post("/wiki/lint", response_model=LintReport)
+async def lint_wiki() -> LintReport:
+    """Run a health check over the wiki and return a report of any findings.
+
+    Mirrors the periodic "lint" from karpathy's LLM-wiki guidelines: structural
+    checks (schema integrity, broken links, orphan pages) plus an LLM pass for
+    contradictions, stale claims, coverage gaps, missing cross-references, and
+    data gaps. The LLM pass is blocking network I/O, so it runs off the event loop.
+    """
+    report = await run_in_threadpool(lint_agent.lint_wiki)
+    return report
 
 
 def _resolve_target(category: str, slug: str) -> str:

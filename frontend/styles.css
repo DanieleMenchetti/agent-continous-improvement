@@ -354,6 +354,79 @@ body.book-body header { flex: 0 0 auto; }
   font-size: 12px; color: var(--ink-soft);
 }
 
+/* Health check (lint) — a maintenance panel on the cover + a notification banner */
+.cover-health { margin-top: 44px; padding-top: 22px; border-top: 1px solid var(--rule); }
+.cover-health-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+}
+.cover-health-note {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12.5px; color: var(--ink-soft); margin: 8px 0 16px; max-width: 70ch; line-height: 1.5;
+}
+.cover-health-note a { color: #1d4ed8; }
+
+.lint-results { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.lint-loading, .lint-error {
+  font-size: 13.5px; color: var(--ink-soft); padding: 14px 16px;
+  background: #fffdf6; border: 1px solid var(--rule); border-radius: 10px;
+}
+.lint-error { color: #a11326; border-color: rgba(161,19,38,0.35); background: #fbeaea; }
+
+.lint-summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  font-size: 14px; font-weight: 600; padding: 12px 16px; border-radius: 10px; margin-bottom: 14px;
+}
+.lint-summary.ok     { color: #0f5132; background: rgba(45,212,191,0.14); border: 1px solid rgba(15,81,50,0.2); }
+.lint-summary.issues { color: #7a3d00; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.35); }
+.lint-date { font-weight: 400; font-size: 12px; color: var(--ink-soft); }
+
+.lint-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.lint-item {
+  background: #fffdf6; border: 1px solid var(--rule); border-left-width: 4px;
+  border-radius: 10px; padding: 12px 14px;
+}
+.lint-item.sev-error   { border-left-color: #a11326; }
+.lint-item.sev-warning { border-left-color: #f59e0b; }
+.lint-item.sev-info    { border-left-color: #2dd4bf; }
+.lint-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.lint-icon { font-size: 14px; }
+.lint-title { font-weight: 700; font-size: 14px; color: var(--ink); }
+.lint-tag {
+  margin-left: auto; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-soft); background: #efe8d6; border: 1px solid var(--rule);
+  border-radius: 999px; padding: 2px 9px; white-space: nowrap;
+}
+.lint-detail { font-size: 13px; color: var(--ink); margin-top: 6px; line-height: 1.5; }
+.lint-suggest { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; font-style: italic; }
+.lint-pages { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.lint-page {
+  font-size: 12px; color: #047857; cursor: pointer;
+  background: rgba(4,120,87,0.08); border: 1px solid rgba(4,120,87,0.25);
+  border-radius: 6px; padding: 2px 9px;
+}
+.lint-page:hover { background: rgba(4,120,87,0.16); }
+
+.lint-banner {
+  display: flex; align-items: center; gap: 12px; flex: 0 0 auto;
+  margin: 0 0 10px; padding: 10px 16px; border-radius: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13.5px; font-weight: 600;
+}
+.lint-banner[hidden] { display: none; }
+.lint-banner.sev-error   { background: rgba(161,19,38,0.14); color: #a11326; border: 1px solid rgba(161,19,38,0.4); }
+.lint-banner.sev-warning { background: rgba(245,158,11,0.15); color: #7a3d00; border: 1px solid rgba(245,158,11,0.45); }
+.lint-banner-msg { flex: 1; }
+.lint-banner-view {
+  font: inherit; cursor: pointer; background: #fff; color: inherit;
+  border: 1px solid currentColor; border-radius: 8px; padding: 4px 12px;
+}
+.lint-banner-view:hover { background: rgba(255,255,255,0.6); }
+.lint-banner-close {
+  background: none; border: none; color: inherit; font-size: 20px; line-height: 1;
+  cursor: pointer; padding: 0 2px; opacity: 0.7;
+}
+.lint-banner-close:hover { opacity: 1; }
+
 /* Page-flip controls — arrows anchored to the left/right sides of the reader */
 .book-flip[hidden] { display: none; }
 .book-flip-btn {

@@ -45,6 +45,24 @@ class WikiPageEdit(BaseModel):
     content: str = Field(..., min_length=1)
 
 
+# ---- Wiki health check (lint) ----
+class LintFinding(BaseModel):
+    check: str            # e.g. "orphan", "contradiction", "coverage_gap"
+    severity: str         # "error" | "warning" | "info"
+    title: str
+    detail: str
+    pages: list[str] = []  # affected "category/slug" refs
+    suggestion: str = ""
+
+
+class LintReport(BaseModel):
+    generated: str                    # ISO date the check was run
+    healthy: bool                     # True when no errors/warnings were found
+    counts: dict[str, int]            # {"error": n, "warning": n, "info": n}
+    findings: list[LintFinding] = []
+    stats: dict = {}
+
+
 # ---- Q&A pairs (expert review view) ----
 class QAPairOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

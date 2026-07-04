@@ -34,6 +34,9 @@
     <main class="book-stage">
       <button class="book-index-open" id="indexOpen" aria-label="Show contents">&#9776; Contents</button>
 
+      <!-- Health-check notification banner (shown when the last lint found issues) -->
+      <div class="lint-banner" id="lintBanner" hidden></div>
+
       <div class="book-reader">
         <article class="book-page" id="bookPage">
           <div class="book-empty">Loading the knowledge…</div>
@@ -348,16 +351,128 @@
           }
           html += `</ul>`;
         }
+        html += `<div class="cover-health">
+          <div class="cover-health-head">
+            <h2 class="cover-section" style="margin-top:0">Health check</h2>
+            <button class="page-act primary" id="lintBtn">🩺 ${lintReport ? "Re-run health check" : "Run health check"}</button>
+          </div>
+          <p class="cover-health-note">Lint the wiki for contradictions, stale claims, orphan pages,
+            coverage gaps and missing cross-references — the periodic health check from
+            <a href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f" target="_blank" rel="noopener">karpathy's LLM-wiki</a> guidelines.</p>
+          <div id="lintResults" class="lint-results"></div>
+        </div>`;
         html += `<div class="cover-danger">
           <button class="danger-btn" id="deleteAllBtn">Delete entire knowledge</button>
           <span class="cover-danger-note">Permanently removes every page, source, and the index — and clears the chat retrieval index.</span>
         </div>`;
       }
       pageEl.innerHTML = html;
+      if (pages.length && lintReport) renderLintResults();
       flipMeta.textContent = pages.length ? `${pages.length} page${pages.length === 1 ? "" : "s"}` : "";
       prevBtn.disabled = true;
       nextBtn.disabled = pages.length === 0;
       flipEl.hidden = false;
+    }
+
+    // ── Health check (lint) ─────────────────────────────────────────────
+    let lintReport = null;   // last report from POST /wiki/lint (persists across nav)
+    let linting = false;
+
+    const SEVERITY = {
+      error:   { icon: "⛔", label: "Error" },
+      warning: { icon: "⚠️", label: "Warning" },
+      info:    { icon: "💡", label: "Suggestion" },
+    };
+    const CHECK_LABELS = {
+      schema: "Schema", broken_link: "Broken link", orphan: "Orphan page",
+      contradiction: "Contradiction", stale: "Stale claim", coverage_gap: "Coverage gap",
+      missing_xref: "Missing cross-reference", data_gap: "Data gap",
+      config: "Setup", semantic_error: "Lint error",
+    };
+
+    async function runLint() {
+      if (linting) return;
+      linting = true;
+      const btn = document.getElementById("lintBtn");
+      const out = document.getElementById("lintResults");
+      if (btn) { btn.disabled = true; btn.textContent = "Checking…"; }
+      if (out) out.innerHTML = `<div class="lint-loading">Running the health check — the agent is reading every page. This can take a moment…</div>`;
+      try {
+        const res = await fetch(`${API}/config/wiki/lint`, { method: "POST" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        lintReport = await res.json();
+      } catch (e) {
+        if (out) out.innerHTML = `<div class="lint-error">Health check failed: ${escapeHtml(e.message)}</div>`;
+        if (btn) { btn.disabled = false; btn.textContent = "🩺 Run health check"; }
+        linting = false;
+        return;
+      }
+      linting = false;
+      if (btn) { btn.disabled = false; btn.textContent = "🩺 Re-run health check"; }
+      renderLintResults();
+      updateLintBanner();
+    }
+
+    function renderLintResults() {
+      const out = document.getElementById("lintResults");
+      if (!out || !lintReport) return;
+      const { generated, healthy, counts, findings } = lintReport;
+
+      let summary;
+      if (healthy && !findings.length) {
+        summary = `✓ The wiki is healthy — no issues found.`;
+      } else if (healthy) {
+        summary = `✓ No problems, ${findings.length} suggestion${findings.length === 1 ? "" : "s"} below.`;
+      } else {
+        const bits = [];
+        if (counts.error)   bits.push(`${counts.error} error${counts.error === 1 ? "" : "s"}`);
+        if (counts.warning) bits.push(`${counts.warning} warning${counts.warning === 1 ? "" : "s"}`);
+        if (counts.info)    bits.push(`${counts.info} suggestion${counts.info === 1 ? "" : "s"}`);
+        summary = `⚠ ${bits.join(" · ")} — review below.`;
+      }
+      let html = `<div class="lint-summary ${healthy ? "ok" : "issues"}">` +
+        `<span>${summary}</span><span class="lint-date">checked ${escapeHtml(generated)}</span></div>`;
+
+      if (findings.length) {
+        html += `<ul class="lint-list">`;
+        for (const f of findings) {
+          const sev = SEVERITY[f.severity] || SEVERITY.info;
+          html += `<li class="lint-item sev-${escapeHtml(f.severity)}">` +
+            `<div class="lint-head"><span class="lint-icon">${sev.icon}</span>` +
+            `<span class="lint-title">${escapeHtml(f.title)}</span>` +
+            `<span class="lint-tag">${escapeHtml(CHECK_LABELS[f.check] || f.check)}</span></div>` +
+            `<div class="lint-detail">${escapeHtml(f.detail)}</div>`;
+          if (f.suggestion) html += `<div class="lint-suggest">→ ${escapeHtml(f.suggestion)}</div>`;
+          if (f.pages && f.pages.length) {
+            html += `<div class="lint-pages">`;
+            for (const ref of f.pages) {
+              const [cat, slug] = ref.split("/");
+              const title = titleBySlug.get(slug) || (slug || ref).replace(/-/g, " ");
+              html += `<a class="lint-page" data-cat="${escapeHtml(cat || "")}" data-slug="${escapeHtml(slug || "")}">${escapeHtml(title)}</a>`;
+            }
+            html += `</div>`;
+          }
+          html += `</li>`;
+        }
+        html += `</ul>`;
+      }
+      out.innerHTML = html;
+    }
+
+    function updateLintBanner() {
+      const banner = document.getElementById("lintBanner");
+      if (!banner) return;
+      if (!lintReport || lintReport.healthy) { banner.hidden = true; return; }
+      const { counts } = lintReport;
+      const bits = [];
+      if (counts.error)   bits.push(`${counts.error} error${counts.error === 1 ? "" : "s"}`);
+      if (counts.warning) bits.push(`${counts.warning} warning${counts.warning === 1 ? "" : "s"}`);
+      banner.className = `lint-banner ${counts.error ? "sev-error" : "sev-warning"}`;
+      banner.innerHTML =
+        `<span class="lint-banner-msg">🩺 Wiki health: ${bits.join(" · ")} need attention.</span>` +
+        `<button class="lint-banner-view" id="lintBannerView">Review</button>` +
+        `<button class="lint-banner-close" id="lintBannerClose" aria-label="Dismiss">&times;</button>`;
+      banner.hidden = false;
     }
 
     async function show(idx, { push = true } = {}) {
@@ -418,8 +533,20 @@
     pageEl.addEventListener("click", (e) => {
       // knowledge controls
       if (e.target.closest("#deleteAllBtn")) { e.preventDefault(); deleteAll(); return; }
+      if (e.target.closest("#lintBtn"))      { e.preventDefault(); runLint(); return; }
       if (e.target.closest("#editSave"))     { e.preventDefault(); saveEdit(); return; }
       if (e.target.closest("#editCancel"))   { e.preventDefault(); editing = null; show(current, { push: false }); return; }
+
+      // a lint finding's affected page → navigate to it
+      const lp = e.target.closest(".lint-page");
+      if (lp) {
+        e.preventDefault();
+        const { cat, slug } = lp.dataset;
+        let idx = pages.findIndex((p) => p.slug === slug && (!cat || p.category === cat));
+        if (idx === -1) idx = pages.findIndex((p) => p.slug === slug);
+        if (idx !== -1) show(idx);
+        return;
+      }
       const act = e.target.closest(".page-act");
       if (act) {
         e.preventDefault();
@@ -444,6 +571,16 @@
 
     prevBtn.addEventListener("click", () => go(-1));
     nextBtn.addEventListener("click", () => go(1));
+
+    // Health-check banner: jump to the cover to review, or dismiss.
+    document.getElementById("lintBanner").addEventListener("click", (e) => {
+      if (e.target.closest("#lintBannerClose")) {
+        document.getElementById("lintBanner").hidden = true;
+      } else if (e.target.closest("#lintBannerView")) {
+        show(-1);
+        document.getElementById("lintResults")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
 
     document.addEventListener("keydown", (e) => {
       if (/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) return;
