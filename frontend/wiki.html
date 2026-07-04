@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Wiki</title>
+  <title>Knowledge</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header>
-    <h1>📖 Knowledge Wiki</h1>
+    <h1>📖 Knowledge</h1>
     <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">&#9776;</button>
     <nav id="mainNav">
       <a href="chat.html">Chat</a>
       <a href="feedback.html">Expert review</a>
       <a href="config.html">Config</a>
-      <a href="wiki.html" class="active">Wiki</a>
+      <a href="wiki.html" class="active">Knowledge</a>
     </nav>
   </header>
 
@@ -35,7 +35,7 @@
       <button class="book-index-open" id="indexOpen" aria-label="Show contents">&#9776; Contents</button>
 
       <article class="book-page" id="bookPage">
-        <div class="book-empty">Loading the wiki…</div>
+        <div class="book-empty">Loading the knowledge…</div>
       </article>
 
       <nav class="book-flip" id="bookFlip" hidden>
@@ -238,11 +238,11 @@
         if (!groups.has(p.label)) groups.set(p.label, []);
         groups.get(p.label).push(p);
       });
-      let html = `<h1 class="cover-title">Knowledge Wiki</h1>
+      let html = `<h1 class="cover-title">Knowledge</h1>
         <p class="cover-sub">A living book, written from the documents you've ingested. ` +
         `Pick a chapter from the contents, or turn the page.</p>`;
       if (!pages.length) {
-        html += `<div class="book-empty">The wiki is empty. Head to
+        html += `<div class="book-empty">The knowledge base is empty. Head to
           <a href="config.html">Config</a> and upload a PDF to begin filling these pages.</div>`;
       } else {
         for (const [label, items] of groups) {
@@ -356,7 +356,7 @@
         buildToc();
         routeFromHash();
       } catch (e) {
-        pageEl.innerHTML = `<div class="book-empty">Could not load the wiki (${e.message}).</div>`;
+        pageEl.innerHTML = `<div class="book-empty">Could not load the knowledge base (${e.message}).</div>`;
         tocEl.innerHTML = "";
       }
     })();

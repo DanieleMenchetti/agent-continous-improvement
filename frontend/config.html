@@ -14,7 +14,7 @@
       <a href="chat.html">Chat</a>
       <a href="feedback.html">Expert review</a>
       <a href="config.html" class="active">Config</a>
-      <a href="wiki.html">Wiki</a>
+      <a href="wiki.html">Knowledge</a>
     </nav>
   </header>
 
@@ -39,7 +39,7 @@
       <h2 class="config-title">Documents Loader</h2>
       <p class="config-hint">
         Drop a PDF here to ingest it. An agent extracts its content into a persistent
-        markdown <strong>wiki</strong> on the server (entity &amp; concept pages, an index,
+        markdown <strong>knowledge base</strong> on the server (entity &amp; concept pages, an index,
         and an append-only log), merging into existing pages without deleting prior
         knowledge. The text is also chunk-indexed for chat retrieval.
       </p>
@@ -136,8 +136,8 @@
         const updated = (w.pages_updated || []).length;
         dropResult.textContent =
           `✓ ${data.filename} — ${data.pages} page(s), ${data.chunks_indexed} chunks indexed. ` +
-          `Wiki: ${created} new page(s), ${updated} updated.`;
-        toast("Document ingested into wiki");
+          `Knowledge: ${created} new page(s), ${updated} updated.`;
+        toast("Document ingested into knowledge");
       } catch (e) {
         setDropState("error");
         dropResult.textContent = "Error: " + e.message;
