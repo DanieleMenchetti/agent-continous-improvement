@@ -41,6 +41,10 @@ class SoulPrompt(BaseModel):
     prompt: str = ""
 
 
+class WikiPageEdit(BaseModel):
+    content: str = Field(..., min_length=1)
+
+
 # ---- Q&A pairs (expert review view) ----
 class QAPairOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

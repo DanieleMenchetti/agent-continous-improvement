@@ -102,6 +102,24 @@ def delete_feedback(feedback_id: int) -> None:
         logger.exception("Failed to delete feedback %s from vector store", feedback_id)
 
 
+def delete_document_chunks(filename: str) -> None:
+    """Remove all indexed chunks belonging to a single ingested document."""
+    try:
+        get_collection().delete(where={"source": filename})
+        logger.info("Deleted indexed chunks for document '%s'", filename)
+    except Exception:  # pragma: no cover - best effort cleanup
+        logger.exception("Failed to delete chunks for document '%s'", filename)
+
+
+def delete_all_document_chunks() -> None:
+    """Remove every ingested-document chunk (leaves expert feedback intact)."""
+    try:
+        get_collection().delete(where={"type": "document"})
+        logger.info("Deleted all indexed document chunks")
+    except Exception:  # pragma: no cover - best effort cleanup
+        logger.exception("Failed to delete all document chunks")
+
+
 def search(question: str, k: int | None = None) -> list[dict]:
     """Return the most relevant expert feedback for a customer question."""
     k = k or settings.rag_top_k

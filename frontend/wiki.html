@@ -204,11 +204,103 @@
     async function fetchPage(category, slug) {
       const key = category + "/" + slug;
       if (cache.has(key)) return cache.get(key);
-      const res = await fetch(`${API}/config/wiki/${category}/${slug}`);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const html = renderMarkdown(await res.text());
+      const raw = await fetchRaw(category, slug);
+      const html = renderMarkdown(raw);
       cache.set(key, html);
       return html;
+    }
+
+    async function fetchRaw(category, slug) {
+      const res = await fetch(`${API}/config/wiki/${category}/${slug}`);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.text();
+    }
+
+    // ── Editing & deletion ──────────────────────────────────────────────
+    let editing = null;  // {category, slug} while the raw-markdown editor is open
+
+    // Reload the catalog (titles/summaries may have shifted) and navigate to a
+    // page by identity, or to the cover when it no longer exists.
+    async function reloadAndShow(category, slug) {
+      await loadCatalog();
+      buildToc();
+      const idx = (category && slug)
+        ? pages.findIndex((p) => p.category === category && p.slug === slug)
+        : -1;
+      show(idx);
+    }
+
+    async function startEdit(p) {
+      editing = { category: p.category, slug: p.slug };
+      pageEl.innerHTML = `<div class="book-empty">Loading…</div>`;
+      let raw;
+      try {
+        raw = await fetchRaw(p.category, p.slug);
+      } catch (e) {
+        editing = null;
+        pageEl.innerHTML = `<div class="book-empty">Could not open the editor (${e.message}).</div>`;
+        return;
+      }
+      pageEl.innerHTML =
+        `<div class="page-kicker">Editing · ${escapeHtml(p.label)} · ${escapeHtml(p.title)}</div>` +
+        `<textarea class="page-editor" id="editArea" spellcheck="false"></textarea>` +
+        `<div class="edit-actions">` +
+          `<button class="page-act primary" id="editSave">Save</button>` +
+          `<button class="page-act" id="editCancel">Cancel</button>` +
+          `<span class="edit-status" id="editStatus"></span>` +
+        `</div>`;
+      document.getElementById("editArea").value = raw;
+      flipEl.hidden = true;  // no page-turning mid-edit
+    }
+
+    async function saveEdit() {
+      if (!editing) return;
+      const { category, slug } = editing;
+      const content = document.getElementById("editArea").value;
+      const statusEl = document.getElementById("editStatus");
+      statusEl.textContent = "Saving…";
+      try {
+        const res = await fetch(`${API}/config/wiki/${category}/${slug}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+      } catch (e) {
+        statusEl.textContent = "Error: " + e.message;
+        return;
+      }
+      cache.delete(category + "/" + slug);
+      editing = null;
+      await reloadAndShow(category, slug);
+    }
+
+    async function deletePage(p) {
+      const isSource = p.category === "sources";
+      const extra = isSource ? " Its indexed chunks will also be removed from chat retrieval." : "";
+      if (!confirm(`Delete "${p.title}"?\n\nThis page will be permanently removed.${extra} This cannot be undone.`)) return;
+      try {
+        const res = await fetch(`${API}/config/wiki/${p.category}/${p.slug}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+      } catch (e) {
+        alert("Could not delete: " + e.message);
+        return;
+      }
+      cache.delete(p.category + "/" + p.slug);
+      await reloadAndShow(null, null);
+    }
+
+    async function deleteAll() {
+      if (!confirm("Delete the ENTIRE knowledge base?\n\nEvery page, source, and the index will be permanently removed, and the chat retrieval index will be cleared. This cannot be undone.")) return;
+      try {
+        const res = await fetch(`${API}/config/wiki`, { method: "DELETE" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+      } catch (e) {
+        alert("Could not delete: " + e.message);
+        return;
+      }
+      cache.clear();
+      await reloadAndShow(null, null);
     }
 
     // ── Rendering ───────────────────────────────────────────────────────
@@ -256,6 +348,10 @@
           }
           html += `</ul>`;
         }
+        html += `<div class="cover-danger">
+          <button class="danger-btn" id="deleteAllBtn">Delete entire knowledge</button>
+          <span class="cover-danger-note">Permanently removes every page, source, and the index — and clears the chat retrieval index.</span>
+        </div>`;
       }
       pageEl.innerHTML = html;
       flipMeta.textContent = pages.length ? `${pages.length} page${pages.length === 1 ? "" : "s"}` : "";
@@ -276,7 +372,13 @@
       try {
         const body = await fetchPage(p.category, p.slug);
         pageEl.innerHTML =
-          `<div class="page-kicker">${p.label}</div>` +
+          `<div class="page-toolbar">` +
+            `<span class="page-kicker">${escapeHtml(p.label)}</span>` +
+            `<span class="page-tools">` +
+              `<button class="page-act" data-act="edit">✎ Edit</button>` +
+              `<button class="page-act danger" data-act="delete">🗑 Delete</button>` +
+            `</span>` +
+          `</div>` +
           `<div class="page-body">${body}</div>`;
       } catch (e) {
         pageEl.innerHTML = `<div class="book-empty">Could not load this page (${e.message}).</div>`;
@@ -314,6 +416,20 @@
     });
 
     pageEl.addEventListener("click", (e) => {
+      // knowledge controls
+      if (e.target.closest("#deleteAllBtn")) { e.preventDefault(); deleteAll(); return; }
+      if (e.target.closest("#editSave"))     { e.preventDefault(); saveEdit(); return; }
+      if (e.target.closest("#editCancel"))   { e.preventDefault(); editing = null; show(current, { push: false }); return; }
+      const act = e.target.closest(".page-act");
+      if (act) {
+        e.preventDefault();
+        const p = pages[current];
+        if (!p) return;
+        if (act.dataset.act === "edit") startEdit(p);
+        else if (act.dataset.act === "delete") deletePage(p);
+        return;
+      }
+
       const cover = e.target.closest(".cover-link");
       if (cover) { e.preventDefault(); show(Number(cover.dataset.idx)); return; }
       const link = e.target.closest(".wikilink");

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .. import ingest_agent, vectorstore, wiki
 from ..database import get_db
 from ..models import KeyValueSetting
-from ..schemas import SoulPrompt
+from ..schemas import SoulPrompt, WikiPageEdit
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -108,14 +108,64 @@ def list_wiki() -> dict:
     }
 
 
-@router.get("/wiki/{category}/{slug}", response_class=PlainTextResponse)
-def get_wiki_page(category: str, slug: str) -> str:
-    """Return the raw markdown of a single wiki page."""
+def _resolve_target(category: str, slug: str) -> str:
+    """Validate a (category, slug) pair and return the sanitized slug.
+
+    Raises 404/400 for an unknown category or a slug that sanitizes to nothing.
+    """
     allowed = (*wiki.CATEGORIES, wiki.SOURCES_DIR)
     if category not in allowed:
         raise HTTPException(status_code=404, detail="Unknown wiki category.")
     safe_slug = re.sub(r"[^a-zA-Z0-9._-]", "", slug)
-    path = wiki._root() / category / f"{safe_slug}.md"
-    if not path.exists():
+    if not safe_slug:
+        raise HTTPException(status_code=400, detail="Invalid page slug.")
+    return safe_slug
+
+
+@router.get("/wiki/{category}/{slug}", response_class=PlainTextResponse)
+def get_wiki_page(category: str, slug: str) -> str:
+    """Return the raw markdown of a single wiki page."""
+    safe_slug = _resolve_target(category, slug)
+    if not wiki.page_exists(category, safe_slug):
         raise HTTPException(status_code=404, detail="Wiki page not found.")
-    return path.read_text(encoding="utf-8")
+    return (wiki._root() / category / f"{safe_slug}.md").read_text(encoding="utf-8")
+
+
+# ── Knowledge editing / deletion ─────────────────────────────────────────────
+
+@router.put("/wiki/{category}/{slug}", response_class=PlainTextResponse)
+def update_wiki_page(category: str, slug: str, body: WikiPageEdit) -> str:
+    """Overwrite a page's raw markdown and refresh the index."""
+    safe_slug = _resolve_target(category, slug)
+    if not wiki.page_exists(category, safe_slug):
+        raise HTTPException(status_code=404, detail="Wiki page not found.")
+    wiki.write_raw(category, safe_slug, body.content)
+    wiki.regenerate_index()
+    return (wiki._root() / category / f"{safe_slug}.md").read_text(encoding="utf-8")
+
+
+@router.delete("/wiki/{category}/{slug}")
+def delete_wiki_page(category: str, slug: str) -> dict:
+    """Delete a single page. Deleting a source also purges its indexed chunks."""
+    safe_slug = _resolve_target(category, slug)
+    if not wiki.page_exists(category, safe_slug):
+        raise HTTPException(status_code=404, detail="Wiki page not found.")
+
+    # A source owns chunks in the vector store (keyed by original filename).
+    if category == wiki.SOURCES_DIR:
+        filename = wiki.source_filename(safe_slug)
+        if filename:
+            vectorstore.delete_document_chunks(filename)
+
+    wiki.delete_page(category, safe_slug)
+    wiki.regenerate_index()
+    return {"ok": True, "stats": wiki.stats()}
+
+
+@router.delete("/wiki")
+def clear_wiki() -> dict:
+    """Delete the entire knowledge base: all pages, sources, index and log,
+    plus every ingested-document chunk in the vector store."""
+    wiki.clear_all()
+    vectorstore.delete_all_document_chunks()
+    return {"ok": True, "stats": wiki.stats()}

@@ -14,6 +14,7 @@ log.md / sources/ are append-only.
 from __future__ import annotations
 
 import re
+import shutil
 from datetime import date
 from pathlib import Path
 
@@ -123,6 +124,53 @@ def write_page(category: str, slug: str, frontmatter: dict, body: str) -> None:
     front = yaml.safe_dump(frontmatter, sort_keys=False, allow_unicode=True).strip()
     content = f"---\n{front}\n---\n\n{body.strip()}\n"
     _page_file(category, slug).write_text(content, encoding="utf-8")
+
+
+def write_raw(category: str, slug: str, text: str) -> None:
+    """Overwrite a page with verbatim markdown (used by the manual editor)."""
+    content = text if text.endswith("\n") else text + "\n"
+    _page_file(category, slug).write_text(content, encoding="utf-8")
+
+
+def page_exists(category: str, slug: str) -> bool:
+    return _page_file(category, slug).exists()
+
+
+def delete_page(category: str, slug: str) -> bool:
+    """Delete a single page file. Returns False if it wasn't there."""
+    path = _page_file(category, slug)
+    if not path.exists():
+        return False
+    path.unlink()
+    return True
+
+
+def source_filename(slug: str) -> str | None:
+    """Original filename recorded in a source page's frontmatter, if any.
+
+    Used to locate the matching chunks in the vector store when a source is
+    deleted (chunks are keyed by the original filename, not the slug).
+    """
+    page = read_page(SOURCES_DIR, slug)
+    if not page:
+        return None
+    return page[0].get("title")
+
+
+def clear_all() -> None:
+    """Delete every file in the wiki and recreate an empty skeleton.
+
+    Removes the *contents* rather than the directory itself, so a bind/volume
+    mount at the wiki root keeps working.
+    """
+    root = _root()
+    if root.exists():
+        for child in root.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                child.unlink(missing_ok=True)
+    ensure_wiki()
 
 
 def list_pages(category: str) -> list[str]:
