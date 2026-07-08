@@ -41,7 +41,7 @@
         Drop a PDF here to ingest it. An agent extracts its content into a persistent
         markdown <strong>knowledge base</strong> on the server (entity &amp; concept pages, an index,
         and an append-only log), merging into existing pages without deleting prior
-        knowledge. The text is also chunk-indexed for chat retrieval.
+        knowledge.
       </p>
       <div class="drop-zone" id="dropZone">
         <input type="file" id="fileInput" accept="application/pdf" />
@@ -135,7 +135,7 @@
         const created = (w.pages_created || []).length;
         const updated = (w.pages_updated || []).length;
         dropResult.textContent =
-          `✓ ${data.filename} — ${data.pages} page(s), ${data.chunks_indexed} chunks indexed. ` +
+          `✓ ${data.filename} — ${data.pages} page(s). ` +
           `Knowledge: ${created} new page(s), ${updated} updated.`;
         toast("Document ingested into knowledge");
       } catch (e) {

@@ -1,8 +1,7 @@
-"""LangGraph agent that answers customer questions using RAG over expert feedback.
+"""LangGraph agent that answers customer questions.
 
-Graph:  START -> retrieve -> generate -> END
-  retrieve: pull the most relevant expert feedback from the vector DB
-  generate: ask Gemini 2.5 Flash to answer, grounded in that feedback
+Graph:  START -> generate -> END
+  generate: ask Gemini 2.5 Flash to answer, guided by the configured Agent Soul.
 """
 from __future__ import annotations
 
@@ -13,21 +12,16 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, START, StateGraph
 
 from .config import settings
-from . import vectorstore
 
 SYSTEM_PROMPT = """
-You will be given EXPERT GUIDANCE retrieved internal knowledge. Treat this knowledge as
-authoritative and prefer it over your own prior assumptions. If the guidance
-corrects a common mistake, make sure your answer reflects the correction.
-If no guidance is relevant, answer to the best of your ability and
-be clear when you are uncertain.
+Answer the customer's question as helpfully and accurately as you can.
+Be clear when you are uncertain.
 
 Answer concisely and helpfully."""
 
 
 class AgentState(TypedDict):
     question: str
-    retrieved: list[dict]
     answer: str
     soul_prompt: str
 
@@ -46,34 +40,13 @@ def _get_llm() -> ChatGoogleGenerativeAI:
     return _llm
 
 
-def _retrieve(state: AgentState) -> AgentState:
-    hits = vectorstore.search(state["question"])
-    state["retrieved"] = hits
-    return state
-
-
-def _format_context(hits: list[dict]) -> str:
-    if not hits:
-        return "(no expert guidance found for this question)"
-    lines = []
-    for i, h in enumerate(hits, 1):
-        meta = h["metadata"]
-        lines.append(
-            f"[{i}] Similar question: {meta.get('question', '')}\n"
-            f"    Expert guidance: {meta.get('feedback', '')}"
-        )
-    return "\n".join(lines)
-
-
 def _generate(state: AgentState) -> AgentState:
-    context = _format_context(state["retrieved"])
-    user_content = (
-        f"EXPERT GUIDANCE FROM PAST FEEDBACK:\n{context}\n\n"
-        f"CUSTOMER QUESTION:\n{state['question']}"
-    )
     soul = (state.get("soul_prompt") or "").strip()
     system_content = f"{soul}\n\n{SYSTEM_PROMPT}" if soul else SYSTEM_PROMPT
-    messages = [SystemMessage(content=system_content), HumanMessage(content=user_content)]
+    messages = [
+        SystemMessage(content=system_content),
+        HumanMessage(content=state["question"]),
+    ]
     response = _get_llm().invoke(messages)
     state["answer"] = response.content
     return state
@@ -81,10 +54,8 @@ def _generate(state: AgentState) -> AgentState:
 
 def _build_graph():
     graph = StateGraph(AgentState)
-    graph.add_node("retrieve", _retrieve)
     graph.add_node("generate", _generate)
-    graph.add_edge(START, "retrieve")
-    graph.add_edge("retrieve", "generate")
+    graph.add_edge(START, "generate")
     graph.add_edge("generate", END)
     return graph.compile()
 
@@ -99,9 +70,9 @@ def get_agent():
     return _app
 
 
-def answer_question(question: str, soul_prompt: str = "") -> tuple[str, list[dict]]:
-    """Run the agent. Returns (answer, retrieved_feedback)."""
+def answer_question(question: str, soul_prompt: str = "") -> str:
+    """Run the agent and return its answer."""
     result = get_agent().invoke(
-        {"question": question, "retrieved": [], "answer": "", "soul_prompt": soul_prompt}
+        {"question": question, "answer": "", "soul_prompt": soul_prompt}
     )
-    return result["answer"], result["retrieved"]
+    return result["answer"]

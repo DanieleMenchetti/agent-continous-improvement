@@ -33,17 +33,10 @@
     const inputEl = document.getElementById("input");
     const sendBtn = document.getElementById("send");
 
-    function addMessage(text, who, usedFeedback) {
+    function addMessage(text, who) {
       const div = document.createElement("div");
       div.className = "msg " + who;
       div.textContent = text;
-      if (usedFeedback && usedFeedback.length) {
-        const u = document.createElement("div");
-        u.className = "used";
-        u.textContent = "ℹ️ Answer informed by " + usedFeedback.length +
-          " expert feedback item(s).";
-        div.appendChild(u);
-      }
       messagesEl.appendChild(div);
       div.scrollIntoView({ behavior: "smooth", block: "end" });
       return div;
@@ -65,13 +58,6 @@
         if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
         pending.textContent = data.answer;
-        if (data.used_feedback && data.used_feedback.length) {
-          const u = document.createElement("div");
-          u.className = "used";
-          u.textContent = "ℹ️ Answer informed by " +
-            data.used_feedback.filter(Boolean).length + " expert feedback item(s).";
-          pending.appendChild(u);
-        }
       } catch (e) {
         pending.textContent = "⚠️ Error: " + e.message;
       } finally {

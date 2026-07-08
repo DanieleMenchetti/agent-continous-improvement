@@ -7,7 +7,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
-from .. import ingest_agent, lint_agent, vectorstore, wiki
+from .. import ingest_agent, lint_agent, wiki
 from ..database import get_db
 from ..models import KeyValueSetting
 from ..schemas import LintReport, SoulPrompt, WikiPageEdit
@@ -15,8 +15,6 @@ from ..schemas import LintReport, SoulPrompt, WikiPageEdit
 router = APIRouter(prefix="/api/config", tags=["config"])
 
 SOUL_KEY = "agent_soul"
-CHUNK_SIZE = 800
-CHUNK_OVERLAP = 100
 
 
 # ── Agent Soul ────────────────────────────────────────────────────────────────
@@ -41,18 +39,6 @@ def put_soul(body: SoulPrompt, db: Session = Depends(get_db)) -> SoulPrompt:
 
 # ── Document ingestion ────────────────────────────────────────────────────────
 
-def _chunk_text(text: str) -> list[str]:
-    """Split text into overlapping chunks of ~CHUNK_SIZE chars."""
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    chunks: list[str] = []
-    start = 0
-    while start < len(text):
-        end = start + CHUNK_SIZE
-        chunks.append(text[start:end])
-        start += CHUNK_SIZE - CHUNK_OVERLAP
-    return [c.strip() for c in chunks if c.strip()]
-
-
 @router.post("/documents")
 async def upload_document(file: UploadFile, db: Session = Depends(get_db)) -> dict:
     if not (file.filename or "").lower().endswith(".pdf"):
@@ -71,13 +57,8 @@ async def upload_document(file: UploadFile, db: Session = Depends(get_db)) -> di
     if not full_text.strip():
         raise HTTPException(status_code=422, detail="Could not extract text from PDF.")
 
-    chunks = _chunk_text(full_text)
-    safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", file.filename)
-    # These do blocking network I/O (embeddings + many LLM calls); run them off the
-    # event loop so the server stays responsive during a long ingest.
-    count = await run_in_threadpool(vectorstore.upsert_document_chunks, safe_name, chunks)
-
-    # Incrementally build/extend the markdown wiki from this document.
+    # Incrementally build/extend the markdown wiki from this document. This does
+    # blocking network I/O (many LLM calls), so run it off the event loop.
     wiki_result = await run_in_threadpool(
         ingest_agent.ingest_document, file.filename, full_text
     )
@@ -85,7 +66,6 @@ async def upload_document(file: UploadFile, db: Session = Depends(get_db)) -> di
     return {
         "filename": file.filename,
         "pages": len(reader.pages),
-        "chunks_indexed": count,
         "wiki": wiki_result,
     }
 
@@ -159,16 +139,10 @@ def update_wiki_page(category: str, slug: str, body: WikiPageEdit) -> str:
 
 @router.delete("/wiki/{category}/{slug}")
 def delete_wiki_page(category: str, slug: str) -> dict:
-    """Delete a single page. Deleting a source also purges its indexed chunks."""
+    """Delete a single wiki page."""
     safe_slug = _resolve_target(category, slug)
     if not wiki.page_exists(category, safe_slug):
         raise HTTPException(status_code=404, detail="Wiki page not found.")
-
-    # A source owns chunks in the vector store (keyed by original filename).
-    if category == wiki.SOURCES_DIR:
-        filename = wiki.source_filename(safe_slug)
-        if filename:
-            vectorstore.delete_document_chunks(filename)
 
     wiki.delete_page(category, safe_slug)
     wiki.regenerate_index()
@@ -177,8 +151,6 @@ def delete_wiki_page(category: str, slug: str) -> dict:
 
 @router.delete("/wiki")
 def clear_wiki() -> dict:
-    """Delete the entire knowledge base: all pages, sources, index and log,
-    plus every ingested-document chunk in the vector store."""
+    """Delete the entire knowledge base: all pages, sources, index and log."""
     wiki.clear_all()
-    vectorstore.delete_all_document_chunks()
     return {"ok": True, "stats": wiki.stats()}

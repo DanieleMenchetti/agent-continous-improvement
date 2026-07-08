@@ -23,7 +23,9 @@ import yaml
 from .config import settings
 
 # Wiki page categories (subdirectories holding generated markdown pages).
-CATEGORIES = ("summaries", "entities", "concepts")
+# ``feedback`` is a dedicated area for expert feedback, written by a lightweight
+# single-call ingest (see feedback_ingest.py) rather than the heavy PDF pipeline.
+CATEGORIES = ("summaries", "entities", "concepts", "feedback")
 SOURCES_DIR = "sources"
 
 CLAUDE_MD = """# Wiki Schema & Conventions
@@ -36,6 +38,8 @@ documents. It follows a three-layer architecture:
    - `summaries/` — one page per source document.
    - `entities/`  — pages about specific named things (people, products, orgs, systems).
    - `concepts/`  — pages about ideas, processes, and topics.
+   - `feedback/`  — expert feedback captured as durable guidance notes (one page
+     per corrected Q&A pair). Written by a lightweight single-call ingest.
 3. **`CLAUDE.md`** (this file) — conventions for how the wiki is structured.
 
 ## Special files
@@ -50,7 +54,7 @@ Every generated page begins with YAML frontmatter:
 ```yaml
 ---
 title: Human Readable Title
-type: entity | concept | summary
+type: entity | concept | summary | feedback
 summary: One-line description used in index.md.
 sources: [source-slug-a, source-slug-b]
 updated: YYYY-MM-DD
@@ -145,18 +149,6 @@ def delete_page(category: str, slug: str) -> bool:
     return True
 
 
-def source_filename(slug: str) -> str | None:
-    """Original filename recorded in a source page's frontmatter, if any.
-
-    Used to locate the matching chunks in the vector store when a source is
-    deleted (chunks are keyed by the original filename, not the slug).
-    """
-    page = read_page(SOURCES_DIR, slug)
-    if not page:
-        return None
-    return page[0].get("title")
-
-
 def clear_all() -> None:
     """Delete every file in the wiki and recreate an empty skeleton.
 
@@ -243,6 +235,7 @@ _CATEGORY_TITLES = {
     "summaries": "Source Summaries",
     "entities": "Entities",
     "concepts": "Concepts",
+    "feedback": "Expert Feedback",
 }
 
 

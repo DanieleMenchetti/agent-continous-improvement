@@ -59,6 +59,7 @@
     const CATEGORY_ORDER = [
       { key: "concepts",  label: "Concepts" },
       { key: "entities",  label: "Entities" },
+      { key: "feedback",  label: "Expert Feedback" },
       { key: "summaries", label: "Summaries" },
       { key: "sources",   label: "Sources" },
     ];
@@ -279,9 +280,7 @@
     }
 
     async function deletePage(p) {
-      const isSource = p.category === "sources";
-      const extra = isSource ? " Its indexed chunks will also be removed from chat retrieval." : "";
-      if (!confirm(`Delete "${p.title}"?\n\nThis page will be permanently removed.${extra} This cannot be undone.`)) return;
+      if (!confirm(`Delete "${p.title}"?\n\nThis page will be permanently removed. This cannot be undone.`)) return;
       try {
         const res = await fetch(`${API}/config/wiki/${p.category}/${p.slug}`, { method: "DELETE" });
         if (!res.ok) throw new Error("HTTP " + res.status);
@@ -294,7 +293,7 @@
     }
 
     async function deleteAll() {
-      if (!confirm("Delete the ENTIRE knowledge base?\n\nEvery page, source, and the index will be permanently removed, and the chat retrieval index will be cleared. This cannot be undone.")) return;
+      if (!confirm("Delete the ENTIRE knowledge base?\n\nEvery page, source, and the index will be permanently removed. This cannot be undone.")) return;
       try {
         const res = await fetch(`${API}/config/wiki`, { method: "DELETE" });
         if (!res.ok) throw new Error("HTTP " + res.status);
@@ -363,7 +362,7 @@
         </div>`;
         html += `<div class="cover-danger">
           <button class="danger-btn" id="deleteAllBtn">Delete entire knowledge</button>
-          <span class="cover-danger-note">Permanently removes every page, source, and the index — and clears the chat retrieval index.</span>
+          <span class="cover-danger-note">Permanently removes every page, source, and the index.</span>
         </div>`;
       }
       pageEl.innerHTML = html;

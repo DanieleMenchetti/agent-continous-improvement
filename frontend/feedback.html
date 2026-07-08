@@ -104,7 +104,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        if (res.ok) { toast("Feedback saved & indexed for RAG"); load(); }
+        if (res.ok) { toast("Feedback saved to the knowledge base"); load(); }
         else toast("Error saving feedback");
       });
 

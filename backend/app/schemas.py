@@ -14,7 +14,6 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     qa_id: int
     answer: str
-    used_feedback: list[str] = []  # snippets of retrieved expert feedback
 
 
 # ---- Feedback ----

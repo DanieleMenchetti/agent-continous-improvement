@@ -4,8 +4,9 @@ An agent that continuously improves from a human domain expert's feedback.
 
 - **Customers** chat with the agent. Every question/answer pair is stored.
 - **A domain expert** reviews those pairs and writes feedback on the ones worth correcting.
-- Each piece of feedback is embedded into a **vector database**.
-- Before answering, the agent **retrieves relevant past feedback (RAG)** and grounds its reply in it.
+- Each piece of feedback is ingested into a persistent **markdown knowledge base (wiki)**
+  as a concise, durable guidance note.
+- Uploaded PDFs are ingested into the same wiki.
 
 ## Architecture
 
@@ -17,28 +18,31 @@ An agent that continuously improves from a human domain expert's feedback.
                        ▼                        ▼
                 ┌───────────────────────────────────────┐
                 │  FastAPI backend                       │
-                │   • LangGraph agent (retrieve→generate)│
-                │   • Gemini 2.5 Flash (chat + embeds)   │
+                │   • LangGraph agent (generate)         │
+                │   • Gemini 2.5 Flash (chat + ingest)   │
                 └───────┬───────────────────┬────────────┘
                         ▼                   ▼
-                ┌───────────────┐   ┌────────────────┐
-                │ PostgreSQL    │   │ Chroma (vector)│
-                │ Q&A + feedback│   │ expert feedback│
-                └───────────────┘   └────────────────┘
+                ┌───────────────┐   ┌─────────────────────┐
+                │ PostgreSQL    │   │ Wiki (markdown files)│
+                │ Q&A + feedback│   │ /data/wiki volume    │
+                └───────────────┘   └─────────────────────┘
 ```
 
-Services (`docker-compose.yml`): `postgres`, `chroma`, `backend`, `frontend`.
+Services (`docker-compose.yml`): `postgres`, `backend`, `frontend`.
 
 ## How the feedback loop works
 
-1. `POST /api/chat` → LangGraph runs `retrieve` (vector search over feedback) then
-   `generate` (Gemini answers, grounded in retrieved guidance). The Q&A pair is
-   saved to Postgres.
+1. `POST /api/chat` → the LangGraph agent runs `generate` (Gemini answers, guided by
+   the configured Agent Soul). The Q&A pair is saved to Postgres.
 2. The expert opens **Expert review**, sees the Q&A pairs, and submits feedback via
    `PUT /api/feedback/{qa_id}`.
-3. On every create/update, the feedback is **upserted into Chroma** — keyed by the
-   original question's embedding, with the expert's guidance as the retrievable text.
-4. Future similar questions retrieve that guidance, so the agent improves over time.
+3. On every create/update, a single LLM call polishes the correction into a durable
+   guidance note, written to the wiki under the `feedback/` category (one page per
+   Q&A pair; updating overwrites it, deleting removes it).
+
+> The wiki is a human-readable knowledge base built from expert feedback and ingested
+> documents. It is **not yet wired into chat answering** — the agent currently answers
+> from the Agent Soul and its own knowledge (there is no RAG/retrieval step).
 
 ## Run it
 
@@ -65,8 +69,8 @@ Services (`docker-compose.yml`): `postgres`, `chroma`, `backend`, `frontend`.
 | POST   | `/api/chat`           | Ask the agent; stores the Q&A pair        |
 | GET    | `/api/qa`             | List Q&A pairs (`?only_unreviewed=true`)  |
 | GET    | `/api/qa/{id}`        | Get one Q&A pair                          |
-| PUT    | `/api/feedback/{qa_id}` | Create/update feedback (syncs to vector DB) |
-| DELETE | `/api/feedback/{qa_id}` | Remove feedback (and its vector entry)  |
+| PUT    | `/api/feedback/{qa_id}` | Create/update feedback (ingested into the wiki) |
+| DELETE | `/api/feedback/{qa_id}` | Remove feedback (and its wiki page)     |
 | POST   | `/api/config/documents` | Upload a PDF; ingests it into the wiki    |
 | GET    | `/api/config/wiki`      | Catalog of wiki pages (slug/title/summary) + stats |
 | GET    | `/api/config/wiki/{category}/{slug}` | Raw markdown of one wiki page |
@@ -88,17 +92,19 @@ with three layers:
   summaries/         # one summary page per source
   entities/          # pages about named things (merged across sources)
   concepts/          # pages about ideas/topics (merged across sources)
+  feedback/          # expert-feedback guidance notes (one per corrected Q&A pair)
 ```
 
-The pipeline: **summarize** the source → **extract** entities/concepts → **write or
+The PDF pipeline: **summarize** the source → **extract** entities/concepts → **write or
 non-destructively merge** each page → **regenerate** `index.md` → **append** to `log.md`.
 Ingestion is **incremental**: re-ingesting or adding new documents extends existing
 pages and never deletes prior wiki data (sources and the log are append-only; existing
-pages are merged, not replaced). The wiki is not yet wired into chat retrieval — the
-uploaded text is still chunk-indexed into Chroma for chat as before.
+pages are merged, not replaced). Expert feedback takes a much lighter path — a single
+LLM call that writes one `feedback/` page per Q&A pair. The wiki is a knowledge base
+for people to read; it is not consumed by the chat agent.
 
 The wiki can be read as a book at **`/wiki.html`**: a contents sidebar (chapters grouped
-by Concepts / Entities / Summaries / Sources), a paper-style reading surface, page-flip
+by Concepts / Entities / Expert Feedback / Summaries / Sources), a paper-style reading surface, page-flip
 Previous/Next (also ←/→ keys), and clickable `[[category/slug]]` cross-references. It
 renders the markdown client-side and deep-links each page via the URL hash.
 
@@ -110,14 +116,11 @@ Backend settings (env vars, see `backend/app/config.py`):
 |-------------------|------------------------------|
 | `GOOGLE_API_KEY`  | (required)                   |
 | `CHAT_MODEL`      | `gemini-2.5-flash`           |
-| `EMBEDDING_MODEL` | `models/gemini-embedding-001`  |
-| `RAG_TOP_K`       | `4`                          |
 | `DATABASE_URL`    | Postgres DSN                 |
-| `CHROMA_HOST/PORT`| `chroma` / `8000`            |
 | `WIKI_DIR`        | `/data/wiki`                 |
 
 ## Notes
 
 - Tables are auto-created on startup. For production migrations, add Alembic.
-- One feedback entry per Q&A pair (updating overwrites it, in both DBs).
+- One feedback entry per Q&A pair (updating overwrites it, along with its wiki page).
 - CORS is open (`*`) for convenience; restrict it before exposing publicly.
