@@ -14,6 +14,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     qa_id: int
     answer: str
+    used_context: list[str] = []  # titles of wiki pages that grounded the answer
 
 
 # ---- Feedback ----

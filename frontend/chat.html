@@ -58,6 +58,13 @@
         if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
         pending.textContent = data.answer;
+        if (data.used_context && data.used_context.length) {
+          const u = document.createElement("div");
+          u.className = "used";
+          u.textContent = "ℹ️ Grounded in " + data.used_context.length +
+            " wiki page(s): " + data.used_context.join(", ");
+          pending.appendChild(u);
+        }
       } catch (e) {
         pending.textContent = "⚠️ Error: " + e.message;
       } finally {

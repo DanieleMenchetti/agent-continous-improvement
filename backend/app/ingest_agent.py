@@ -36,7 +36,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 
-from . import wiki
+from . import wiki, wiki_sync
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -385,6 +385,9 @@ def ingest_document(original_filename: str, full_text: str) -> dict:
     created, updated = _upsert_items(items, composed_bodies, source_slug)
 
     wiki.regenerate_index()
+    # Sync every page this ingest wrote (the summary + all created/updated pages)
+    # into the vector store so RAG reflects the new knowledge.
+    wiki_sync.index_refs([f"summaries/{source_slug}", *created, *updated])
     wiki.append_log(
         "ingest",
         summary.title,

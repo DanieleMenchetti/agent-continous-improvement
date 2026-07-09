@@ -37,7 +37,7 @@ class QAPair(Base):
 
 
 class Feedback(Base):
-    """Expert guidance on a Q&A pair. Ingested into the wiki knowledge base."""
+    """Expert guidance on a Q&A pair. Ingested into the wiki (and thus into RAG)."""
 
     __tablename__ = "feedback"
 

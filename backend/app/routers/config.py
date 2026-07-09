@@ -7,7 +7,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
-from .. import ingest_agent, lint_agent, wiki
+from .. import ingest_agent, lint_agent, wiki, wiki_sync
 from ..database import get_db
 from ..models import KeyValueSetting
 from ..schemas import LintReport, SoulPrompt, WikiPageEdit
@@ -134,6 +134,7 @@ def update_wiki_page(category: str, slug: str, body: WikiPageEdit) -> str:
         raise HTTPException(status_code=404, detail="Wiki page not found.")
     wiki.write_raw(category, safe_slug, body.content)
     wiki.regenerate_index()
+    wiki_sync.index_page(category, safe_slug)  # keep RAG in sync with the edit
     return (wiki._root() / category / f"{safe_slug}.md").read_text(encoding="utf-8")
 
 
@@ -146,11 +147,26 @@ def delete_wiki_page(category: str, slug: str) -> dict:
 
     wiki.delete_page(category, safe_slug)
     wiki.regenerate_index()
+    wiki_sync.remove_page(category, safe_slug)  # drop it from RAG too
     return {"ok": True, "stats": wiki.stats()}
 
 
 @router.delete("/wiki")
 def clear_wiki() -> dict:
-    """Delete the entire knowledge base: all pages, sources, index and log."""
+    """Delete the entire knowledge base: all pages, sources, index and log,
+    and clear the vector store that mirrors it."""
     wiki.clear_all()
+    wiki_sync.clear()
     return {"ok": True, "stats": wiki.stats()}
+
+
+@router.post("/wiki/reindex")
+async def reindex_wiki() -> dict:
+    """Rebuild the vector store from scratch to match the current wiki.
+
+    Normally the store stays in sync automatically on every wiki change; this is a
+    manual reconcile for recovery. It re-embeds every page, so it runs off the event
+    loop.
+    """
+    pages = await run_in_threadpool(wiki_sync.reindex_all)
+    return {"ok": True, "pages_indexed": pages}

@@ -4,6 +4,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from . import wiki, wiki_sync
 from .database import Base, engine
 from .routers import chat, config, feedback, qa
 
@@ -24,6 +25,11 @@ app.add_middleware(
 def on_startup() -> None:
     # Create tables if they don't exist (simple bootstrap; use Alembic in prod).
     Base.metadata.create_all(bind=engine)
+    # Ensure the wiki skeleton exists and the vector store reflects it (best-effort:
+    # if the store is empty but the wiki has pages, e.g. a fresh Chroma volume, build
+    # it so RAG works from the first request).
+    wiki.ensure_wiki()
+    wiki_sync.ensure_indexed()
 
 
 @app.get("/api/health")

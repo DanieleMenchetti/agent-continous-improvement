@@ -20,7 +20,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 
-from . import wiki
+from . import wiki, wiki_sync
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -153,6 +153,7 @@ def ingest_feedback(
     existed = wiki.page_exists(CATEGORY, slug)
     wiki.write_page(CATEGORY, slug, frontmatter, body)
     wiki.regenerate_index()
+    wiki_sync.index_page(CATEGORY, slug)  # keep RAG in sync with the new/updated page
     wiki.append_log(
         "feedback",
         note.title,
@@ -164,8 +165,10 @@ def ingest_feedback(
 
 def delete_feedback_page(qa_id: int) -> bool:
     """Remove the wiki page for a Q&A pair's feedback. Returns False if absent."""
-    removed = wiki.delete_page(CATEGORY, _slug(qa_id))
+    slug = _slug(qa_id)
+    removed = wiki.delete_page(CATEGORY, slug)
     if removed:
         wiki.regenerate_index()
+        wiki_sync.remove_page(CATEGORY, slug)  # drop it from RAG too
         logger.info("Removed feedback wiki page for qa_id=%s", qa_id)
     return removed
