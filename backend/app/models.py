@@ -36,6 +36,26 @@ class QAPair(Base):
     )
 
 
+class ConversationSummary(Base):
+    """Rolling LLM summary of the older turns of a chat session.
+
+    Recent turns are sent to the agent verbatim; once a turn scrolls out of that
+    window it is folded into ``summary`` exactly once. ``summarized_up_to`` records
+    the highest :class:`QAPair` id already absorbed, so each old turn is summarized a
+    single time instead of re-summarizing the whole history on every request.
+    """
+
+    __tablename__ = "conversation_summaries"
+
+    session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Highest QAPair.id already folded into ``summary`` (0 = nothing folded yet).
+    summarized_up_to: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Feedback(Base):
     """Expert guidance on a Q&A pair. Ingested into the wiki (and thus into RAG)."""
 

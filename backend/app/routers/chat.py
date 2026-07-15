@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from .. import agent
+from .. import agent, history
 from ..database import get_db
 from ..models import KeyValueSetting, QAPair
 from ..schemas import ChatRequest, ChatResponse
@@ -16,9 +16,15 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)):
     soul_row = db.get(KeyValueSetting, "agent_soul")
     soul_prompt = soul_row.value if soul_row else ""
 
-    # 1. Agent answers, grounded in wiki knowledge retrieved via RAG and guided
-    #    by the configured Agent Soul.
-    answer, retrieved = agent.answer_question(req.question, soul_prompt=soul_prompt)
+    # Build the conversation-history block for this session: recent turns verbatim
+    # plus a rolling LLM summary of older ones (empty for a brand-new session).
+    convo_history = history.build_history(db, req.session_id)
+
+    # 1. Agent answers, grounded in wiki knowledge retrieved via RAG, guided by the
+    #    configured Agent Soul, and aware of the conversation so far.
+    answer, retrieved = agent.answer_question(
+        req.question, soul_prompt=soul_prompt, history=convo_history
+    )
 
     # 2. Persist the Q&A pair so the expert can later review it.
     pair = QAPair(question=req.question, answer=answer, session_id=req.session_id)
