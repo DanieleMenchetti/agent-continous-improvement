@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Customer Chat</title>
+  <title>Assistant</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="chat-body">
   <header>
-    <h1>💬 Domain Assistant</h1>
+    <h1>💬 Assistant</h1>
     <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">&#9776;</button>
     <nav id="mainNav">
       <a href="chat.html" class="active">Chat</a>
@@ -19,10 +19,14 @@
   </header>
 
   <div class="container">
-    <div id="messages"></div>
+    <div id="messages">
+      <div class="chat-welcome" id="welcome">
+        <h2>How can I help you today?</h2>
+      </div>
+    </div>
     <div class="composer">
-      <textarea id="input" placeholder="Ask a question…" rows="2"></textarea>
-      <button id="send">Send</button>
+      <textarea id="input" placeholder="Ask anything" rows="2"></textarea>
+      <button id="send" aria-label="Send message">➤
     </div>
   </div>
 
@@ -34,6 +38,8 @@
     const sendBtn = document.getElementById("send");
 
     function addMessage(text, who) {
+      const welcome = document.getElementById("welcome");
+      if (welcome) welcome.remove();
       const div = document.createElement("div");
       div.className = "msg " + who;
       div.textContent = text;
@@ -42,13 +48,20 @@
       return div;
     }
 
+    function showTyping(el) {
+      el.innerHTML =
+        '<span class="typing"><span></span><span></span><span></span></span>';
+    }
+
     async function send() {
       const question = inputEl.value.trim();
       if (!question) return;
       addMessage(question, "user");
       inputEl.value = "";
+      autoGrow();
       sendBtn.disabled = true;
-      const pending = addMessage("…", "bot");
+      const pending = addMessage("", "bot");
+      showTyping(pending);
       try {
         const res = await fetch(API + "/chat", {
           method: "POST",
@@ -73,9 +86,23 @@
       }
     }
 
+    function autoGrow() {
+      inputEl.style.height = "auto";
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + "px";
+    }
+
     sendBtn.addEventListener("click", send);
+    inputEl.addEventListener("input", autoGrow);
     inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+
+    document.querySelectorAll(".chat-suggestions .chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        inputEl.value = chip.textContent;
+        autoGrow();
+        send();
+      });
     });
 
     document.getElementById("navToggle").addEventListener("click", () => {
